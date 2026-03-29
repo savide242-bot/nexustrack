@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Radar, Send, CheckCircle, XCircle } from "lucide-react";
+import { Radar, Send, CheckCircle, XCircle, Activity, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Tracking() {
@@ -22,7 +22,6 @@ export default function Tracking() {
 
   useEffect(() => {
     if (!user) return;
-    // Load from profiles
     supabase.from("profiles").select("meta_pixel_id, meta_access_token").eq("user_id", user.id).single().then(({ data }) => {
       if (data) {
         setPixelId((data as any).meta_pixel_id || "");
@@ -30,7 +29,6 @@ export default function Tracking() {
       }
       setLoaded(true);
     });
-    // Load all CAPI events
     loadEvents();
   }, [user]);
 
@@ -69,13 +67,14 @@ export default function Tracking() {
           pixel_id: pixelId,
           access_token: accessToken,
           event_name: "PageView",
+          user_id: user?.id || null,
           event_data: { email: user?.email || "" },
         }),
       });
       const data = await res.json();
       if (data.ok) {
-        toast({ title: "Evento de teste enviado!" });
-        loadEvents();
+        toast({ title: "Evento de teste enviado com sucesso!" });
+        setTimeout(loadEvents, 1500);
       } else {
         toast({ title: "Erro", description: data.error || "Falha ao enviar", variant: "destructive" });
       }
@@ -87,11 +86,57 @@ export default function Tracking() {
 
   if (!loaded) return null;
 
+  const sentCount = events.filter(e => e.status === "sent").length;
+  const errorCount = events.filter(e => e.status === "error").length;
+  const lastEvent = events.length > 0 ? events[0] : null;
+
+  const pixelConfigured = !!(pixelId && accessToken);
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-3xl font-bold">Tracking CAPI</h1>
         <p className="text-muted-foreground">Rastreamento avançado Meta Conversions API — dados reais do comprador</p>
+      </div>
+
+      {/* Status Cards */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-4">
+        <Card className="glass-card border-border">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs text-muted-foreground">Status Pixel</p>
+            {pixelConfigured ? (
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <CheckCircle className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-primary">Configurado</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                <span className="text-sm font-medium text-yellow-500">Não configurado</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="glass-card border-border">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs text-muted-foreground">Eventos Enviados</p>
+            <p className="text-2xl font-bold font-mono text-primary">{sentCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="glass-card border-border">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs text-muted-foreground">Erros</p>
+            <p className={`text-2xl font-bold font-mono ${errorCount > 0 ? "text-destructive" : "text-foreground"}`}>{errorCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="glass-card border-border">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs text-muted-foreground">Último Envio</p>
+            <p className="text-sm font-mono text-muted-foreground mt-1">
+              {lastEvent ? new Date(lastEvent.created_at).toLocaleString("pt-MZ", { dateStyle: "short", timeStyle: "short" }) : "—"}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="glass-card border-border">
@@ -133,12 +178,23 @@ export default function Tracking() {
         </CardContent>
       </Card>
 
-      {events.length > 0 && (
-        <Card className="glass-card border-border overflow-hidden">
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Histórico de Eventos CAPI</CardTitle>
-          </CardHeader>
-          <CardContent>
+      {/* Event History */}
+      <Card className="glass-card border-border overflow-hidden">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              Histórico de Eventos CAPI
+            </CardTitle>
+            <Badge variant="outline" className="border-border">{events.length} eventos</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {events.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">
+              Nenhum evento CAPI registado. Envie um evento de teste ou aguarde vendas reais.
+            </p>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
@@ -155,9 +211,15 @@ export default function Tracking() {
                     <TableCell className="font-mono text-xs text-muted-foreground">{ev.event_id?.slice(0, 8)}...</TableCell>
                     <TableCell>
                       {ev.status === "sent" ? (
-                        <CheckCircle className="h-4 w-4 text-primary" />
+                        <div className="flex items-center gap-1">
+                          <CheckCircle className="h-4 w-4 text-primary" />
+                          <span className="text-xs text-primary">Enviado</span>
+                        </div>
                       ) : (
-                        <XCircle className="h-4 w-4 text-destructive" />
+                        <div className="flex items-center gap-1">
+                          <XCircle className="h-4 w-4 text-destructive" />
+                          <span className="text-xs text-destructive">Erro</span>
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{new Date(ev.created_at).toLocaleString("pt-MZ")}</TableCell>
@@ -165,9 +227,9 @@ export default function Tracking() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
