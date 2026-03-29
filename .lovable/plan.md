@@ -1,98 +1,88 @@
 
 
-# NexusTrack Pro — Plano Completo Refatorado
+# Correções — 4 Problemas
 
-## Resumo das 9 entregas
+## 1. Tracking CAPI — Remover selector de campanha
+**Ficheiro:** `src/pages/Tracking.tsx`
+- Remover o `<Select>` de campanha
+- Salvar Pixel ID e Access Token na tabela `profiles` (novos campos `meta_pixel_id`, `meta_access_token`)
+- Carregar valores do perfil ao montar, salvar com `supabase.from("profiles").update()`
+- Histórico CAPI mostra todos os eventos do utilizador (sem filtro de campanha — query via join com campaigns do user)
+- Evento teste usa os dados do perfil directamente
 
-### 1. Corrigir Dashboard — remover dados falsos
-- Remover `+12% esta semana` hardcoded do MetricCard de Vendas
-- Mostrar apenas dados reais do banco
+**Migração:** Adicionar `meta_pixel_id text` e `meta_access_token text` à tabela `profiles`
 
-### 2. Nova aba "Páginas"
-- **Nova tabela `pages`**: `id`, `user_id`, `campaign_id`, `url`, `name`, `created_at`
-- Nova página onde o utilizador adiciona a URL da página de vendas e recebe um script de tracking
-- O script captura: visitantes, cliques em CTAs (com ID e texto do botão), UTMs, fingerprint
-- Métricas exibidas: total visitantes, total cliques CTA, quais CTAs mais clicados, taxa de conversão por CTA
-- Rota `/pages` + link na sidebar
+## 2. Páginas — Remover campo campanha
+**Ficheiro:** `src/pages/Pages.tsx`
+- Remover o `<Select>` de campanha do formulário de criação
+- Inserir página sem `campaign_id` (já é nullable)
+- O script de tracking usa `page.id` como identificador em vez de `campaign_id`
+- Métricas buscam por `page_url` match em vez de `campaign_id`
 
-### 3. Vendas — país de origem + vendas por fonte
-- Adicionar colunas **País** e **Fonte (utm_source)** na tabela de vendas
-- Cruzamento: `sales.lead_id → leads_clicks.country / utm_source`
-- Precisão 100%: dados vêm do lead associado via modelo híbrido de atribuição
+**Ficheiro:** `supabase/functions/track/index.ts`
+- Aceitar `page_id` como alternativa a `campaign_id`
+- Tornar `campaign_id` opcional na inserção em `leads_clicks`
 
-### 4. Aba Campanhas — Facebook Ads + Mapa Mundial
-- **Facebook Ads via token manual**: o utilizador cola o **Access Token de longa duração** + **Ad Account ID** (já configurado no Meta Developers)
-- Dados salvos na tabela `campaigns` (colunas `fb_access_token`, `fb_ad_account_id`)
-- **Edge Function `facebook-ads`**: proxy server-side que busca campanhas, ad sets, ads, gastos, impressões, cliques, CPA, ROAS via Marketing API do Facebook
-- UI com tabela de métricas Facebook Ads (gasto, lucro, ROI, ROAS, CPA)
-- **Mapa mundial interativo** com `react-simple-maps`:
-  - Pontos amarelos nos países com vendas
-  - Zoom para ver cidades específicas
-  - Dados de `sales` cruzados com `leads_clicks.country/city`
+**Migração:** Tornar `campaign_id` nullable em `leads_clicks` (ALTER COLUMN DROP NOT NULL) e em `cta_clicks`
 
-### 5. Nova aba "Tracking" (CAPI Avançado)
-- Página dedicada ao rastreamento avançado Meta CAPI
-- Campos: Pixel ID + Access Token (salvos por campanha)
-- **Edge Function `meta-capi`** envia eventos com TODOS os dados reais do comprador:
-  - Email, nome completo, telefone, país, cidade, estado, CEP, IP, user-agent, FBC, FBP
-  - **Valor na moeda original** (USD/BRL/EUR) — NÃO em MZN — para o Meta receber dados reais
-  - Deduplicação via `event_id`
-  - Eventos: PageView, Lead, InitiateCheckout, Purchase
-- **Nova tabela `capi_events_log`**: id, campaign_id, event_name, event_id, payload (jsonb), status, response, created_at
-- Histórico de todos os eventos CAPI enviados visível na página
-- Rota `/tracking` + link na sidebar
+## 3. Vendas/Webhook — Corrigir RLS para vendas sem campanha
+O problema: vendas inseridas pelo webhook sem `campaign_id` não aparecem porque a RLS de `sales` faz JOIN com `campaigns`.
 
-### 6. Integrações — salvar no banco + múltiplas plataformas
-- Refazer a página para carregar dados existentes ao montar e salvar com `supabase.update()`
-- Suportar: **Hotmart, Kiwify, Perfect Pay, Eduzz** (campo platform na UI, espaço para mais)
-- Mostrar URL do webhook com botão copiar:
-  `https://qjfnosljbyqzyrfhiybi.supabase.co/functions/v1/hotmart-webhook`
-- Remover VAPID da UI (será gerido como secret do servidor)
+**Migração:** 
+- DROP a política `Users can view own sales` existente
+- Criar nova política que permite ver vendas se:
+  - `campaign_id` IS NOT NULL e o user é dono da campanha, OU
+  - `campaign_id` IS NULL e `buyer_email` match com o email do utilizador autenticado
 
-### 7. Push Notifications — OBRIGATÓRIO FUNCIONAR
-- **Guardar VAPID keys como secrets do servidor** via `add_secret`:
-  - `VAPID_PUBLIC_KEY`: `BAOhQu5GzLaWqPRGOnnJtxaooJsf5IX6IzZ2bfnyCehzXHebgQ-0jLhVZuU-hIjrteYi7R1E-eELWSht3dlk_Y0`
-  - `VAPID_PRIVATE_KEY`: `yDMbbUzqpcvN_KsRSQ0BbhM7wRcLWwt7SMNOQIUIUbM`
-- **Service Worker `public/sw.js`** para receber push events (funciona fora do app, com app fechado)
-- **Botão "Ativar Notificações"** na página de Notificações que pede permissão ao browser e salva subscription em `push_subscriptions`
-- **Edge Function `send-push`** que usa web-push com as VAPID keys para enviar notificações
-- Formato: **"[Nome] pagou X MZN em [Plataforma]"**
-- Chamada automática pelo webhook da Hotmart após cada venda aprovada
-- Deve funcionar fora do app, em background, sem falhas
+**Webhook fix:** O `hotmart-webhook` também precisa associar um `user_id` às vendas para a RLS funcionar sem campanha.
+- Adicionar coluna `user_id uuid` à tabela `sales` (nullable)
+- O webhook tenta encontrar o user_id via `campaigns.user_id` ou via `profiles` match por email
+- Nova RLS: `auth.uid() = user_id OR EXISTS(campaign join)`
 
-### 8. Edge Functions (6 funções)
-- **`track`**: Recebe dados do pixel script → insere em `leads_clicks` → retorna `lead_id`
-- **`track-cta`**: Recebe cliques em CTAs → insere em `cta_clicks`
-- **`hotmart-webhook`**: Recebe webhooks Hotmart → converte moeda via ExchangeRate API → atribuição híbrida (email 40pts + telefone 30pts + fingerprint 20pts + UTM 10pts) → insere em `sales` → dispara `meta-capi` + `send-push`
-- **`meta-capi`**: Envia eventos para Conversions API do Facebook com dados reais
-- **`facebook-ads`**: Proxy para buscar métricas de campanhas do Facebook Ads
-- **`send-push`**: Envia push notification via VAPID/web-push para todas subscriptions do utilizador
+## 4. Integrações — Remover dependência de campanha
+**Ficheiro:** `src/pages/Integrations.tsx`
+- Remover o selector de campanha
+- Salvar o `hotmart_token` na tabela `profiles` (novo campo)
+- A página carrega e salva directamente do perfil do utilizador
+- Manter as tabs de plataformas (Hotmart, Kiwify, Perfect Pay, Eduzz)
+- Manter webhook URL com botão copiar
+- Meta/Google/TikTok tokens continuam salvos por campanha na aba Campanhas
 
-### 9. Migração de banco de dados
-- Nova tabela `pages` (id, user_id, campaign_id, url, name, created_at) com RLS
-- Nova tabela `capi_events_log` (id, campaign_id, event_name, event_id, payload, status, response, created_at) com RLS
-- Adicionar colunas em `campaigns`: `fb_access_token`, `fb_ad_account_id`
-- Habilitar realtime em `sales` e `notifications_log`
+**Migração:** Adicionar `hotmart_token text` à tabela `profiles`
 
----
+**Webhook fix:** `hotmart-webhook` deve buscar o `hotmart_token` nos perfis também (não só nas campanhas)
 
-## Detalhes Técnicos
+## Resumo das migrações SQL
+```text
+ALTER TABLE profiles ADD COLUMN meta_pixel_id text;
+ALTER TABLE profiles ADD COLUMN meta_access_token text;
+ALTER TABLE profiles ADD COLUMN hotmart_token text;
 
-### Dependências novas
-- `react-simple-maps` — mapa mundial interativo SVG
+ALTER TABLE leads_clicks ALTER COLUMN campaign_id DROP NOT NULL;
+ALTER TABLE cta_clicks ALTER COLUMN campaign_id DROP NOT NULL;
 
-### Modelo de atribuição híbrido (no webhook)
-Ao receber venda, buscar leads dos últimos 7 dias e pontuar:
-- Email match: +40 pontos
-- Telefone match: +30 pontos
-- Fingerprint match: +20 pontos
-- UTM match: +10 pontos
-- Lead com maior score é associado à venda
+ALTER TABLE sales ADD COLUMN user_id uuid;
 
-### Novas rotas
-- `/pages` — Páginas de vendas + script + métricas CTA
-- `/tracking` — CAPI avançado + histórico de eventos
+-- Drop old RLS on sales
+DROP POLICY "Users can view own sales" ON sales;
+-- New RLS: user owns via user_id OR via campaign
+CREATE POLICY "Users can view own sales" ON sales
+  FOR SELECT TO authenticated
+  USING (
+    auth.uid() = user_id
+    OR EXISTS (
+      SELECT 1 FROM campaigns c
+      WHERE c.id = sales.campaign_id AND c.user_id = auth.uid()
+    )
+  );
+```
 
-### Sidebar atualizada
-Adicionar: Páginas, Tracking (entre as existentes)
+## Ficheiros a editar
+1. **Migração SQL** — schema changes acima
+2. **`src/pages/Tracking.tsx`** — remover selector campanha, usar profiles
+3. **`src/pages/Pages.tsx`** — remover campo campanha, usar page_id no script
+4. **`src/pages/Integrations.tsx`** — remover selector campanha, salvar hotmart_token no profiles
+5. **`supabase/functions/track/index.ts`** — aceitar page_id, campaign_id opcional
+6. **`supabase/functions/track-cta/index.ts`** — campaign_id opcional
+7. **`supabase/functions/hotmart-webhook/index.ts`** — buscar hottok nos profiles, associar user_id à venda, disparar push mesmo sem campaign_id
 
