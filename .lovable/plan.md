@@ -1,41 +1,108 @@
 
+Plano de correção e endurecimento
 
-# Plano — 3 Correções
+1. Segurança: subir de “boa” para “forte de verdade”
+- Rever onde tokens estão guardados hoje: `profiles.meta_access_token`, `profiles.meta_pixel_id`, `profiles.hotmart_token`, `profiles.fb_ad_account_id`.
+- Separar melhor os usos: token de Ads e token de CAPI não devem ficar misturados no mesmo campo.
+- Endurecer o backend:
+  - validar inputs nas funções `track`, `track-cta`, `meta-capi`, `hotmart-webhook`, `fb-token-exchange`
+  - limitar abuso/rate limiting nas rotas públicas de tracking
+  - rever políticas permissivas de INSERT (`WITH CHECK (true)`) para manter tracking público sem deixar payloads soltos demais
+- Verificar configuração de autenticação e activar proteção contra passwords vazadas.
+- Resultado esperado: dados continuam protegidos por autenticação e regras de acesso, mas com menos risco de abuso e menos chance de falhas futuras.
 
-## 1. Botão Facebook não abre popup de login
+O que encontrei:
+- As tabelas principais já têm RLS.
+- Dados enviados ao Meta CAPI são hashados antes de envio.
+- Mas os tokens sensíveis ainda estão guardados em texto na base de dados do app, protegidos por RLS, não “criptografia máxima”.
+- O linter já acusa 3 pontos: 2 políticas permissivas e proteção de passwords vazadas desligada.
 
-**Causa raiz:** O Facebook SDK bloqueia `FB.login()` quando executado dentro de um iframe (o preview do Lovable). O SDK carrega correctamente (vejo `app_id: 1108905534695999` na resposta da edge function), mas o popup é bloqueado pelo browser porque está num iframe cross-origin.
+2. Aba Campanhas: deixar “pronta para uso”
+- Manter o mapa sempre visível e garantir que acende países a partir de vendas reais.
+- Melhorar a secção Meta Ads:
+  - fluxo claro: conectar Facebook → escolher BM/conta de anúncios → guardar conta → importar métricas
+  - mostrar métricas gerais logo no topo: gasto, compras, ROAS, CTR, CPC, CPM, impressões, cliques
+  - mostrar estado da conta ligada e última importação
+- Corrigir a origem dos dados guardados no perfil para não misturar credenciais de Ads com CAPI.
 
-**Solução:**
-- Adicionar detecção de iframe no `handleFbLogin` — se estiver num iframe, mostrar um toast explicando que o login Facebook só funciona na URL publicada (`nexustrack.lovable.app`)
-- Adicionar um `try/catch` à volta do `FB.login()` para capturar erros de popup bloqueado e resetar o estado `fbLoading` correctamente
-- Garantir que o timeout de fallback reseta o loading se o popup for bloqueado silenciosamente
+O que encontrei:
+- As métricas gerais já existem parcialmente.
+- O mapa depende de `sales.lead_id -> leads_clicks.country`; hoje a base está sem vendas, por isso nada acende.
+- O login Facebook no preview está bloqueado por design: o código detecta iframe e impede login. No publicado ainda pode haver bloqueio de popup do navegador.
 
-**Configuração necessária no Facebook Developers:**
-- Em **Settings → Basic**: Adicionar `nexustrack.lovable.app` em "App Domains"
-- Em **Facebook Login → Settings**: Adicionar `https://nexustrack.lovable.app` em "Valid OAuth Redirect URIs"
-- Em **Settings → Advanced**: Adicionar `nexustrack.lovable.app` em "Allowed Domains for the JavaScript SDK"
-- A App deve estar em modo **Live** (não Development)
+3. Erro ao conectar Facebook
+- Corrigir UX do erro:
+  - mostrar claramente que no preview não vai funcionar
+  - adicionar ação/aviso para abrir a URL publicada
+  - tratar popup bloqueado com mensagem correta e fallback
+- Rever a configuração Meta necessária e listar tudo que precisa ser colocado na app Meta para evitar erro de domínio/popup.
+- Validar o fluxo completo: SDK, permissões, troca do token, listagem das ad accounts/BMs, salvamento da conta.
 
-## 2. Verificação geral de funcionalidades
+O que encontrei:
+- `fb-token-exchange` existe e responde.
+- O botão atual depende de popup (`FB.login()`).
+- A screenshot mostra bloqueio de popup; isso é compatível com o código atual e com restrições do navegador/preview.
 
-Vou verificar e corrigir:
-- **Mapa de vendas**: Está presente e funcional (já confirmado no código — `Geography` fill dinâmico + realtime subscription). OK.
-- **Meta Ads OAuth**: O fluxo está correcto no código — o problema é apenas o iframe. Na URL publicada vai funcionar.
-- **Webhook Hotmart**: O filtro de teste só bloqueia `test === true`, emails `@example.com`, e nomes exactos "teste". Vendas orgânicas passam.
-- **Notificações push**: Enviar notificação de teste para confirmar formato.
-- **Console warnings**: Corrigir o warning `key` no `Geographies` (usar `geo.rsmKey` em vez de `geo.rsSVGPath`)
+4. Aba Páginas: analytics mais completos
+- Expandir os dados além do que já existe:
+  - número de visitantes
+  - cliques em CTAs
+  - CTA mais clicado
+  - taxa de clique
+  - top CTAs
+  - origem/UTMs
+  - países/cidades quando existirem
+  - tendência temporal
+  - visitantes vs cliques vs conversões em vendas atribuídas
+- Melhorar a forma como os dados são carregados para evitar consultas repetidas por página e deixar mais confiável/rápido.
 
-## 3. Refazer logotipo/ícone PWA
+O que encontrei:
+- Hoje já mostra visitantes, cliques CTA, taxa de conversão e top CTAs.
+- Mas faltam métricas mais ricas e agregadas.
+- A página faz várias queries em loop, o que é frágil para crescer.
+- Há 1 página cadastrada, mas ainda sem leads nem cliques gravados.
 
-Criar um ícone PWA profissional e moderno para o NexusTrack Pro:
-- Design clean com tema verde (#00FF7F) sobre fundo escuro (#121212)
-- Forma geométrica moderna (não texto genérico)
-- Gerar ícones 192x192 e 512x512 via SVG inline convertido
-- Actualizar `public/manifest.json` se necessário
+5. Aba Tracking API: deixar realmente funcional
+- Validar salvamento de Pixel ID e token.
+- Garantir que o histórico de eventos grava tanto eventos de teste quanto compras reais.
+- Melhorar a observabilidade:
+  - estado do Pixel
+  - último envio
+  - erros detalhados
+  - contagem de eventos enviados/com erro
+- Garantir consistência entre webhook de venda e envio ao Meta CAPI.
 
-## Ficheiros a editar
-1. **`src/pages/Campaigns.tsx`** — fix FB login iframe detection + key warning
-2. **Invocar `send-push`** — notificação de teste
-3. **Gerar ícones PWA** — criar SVGs profissionais para 192x192 e 512x512
+O que encontrei:
+- A UI existe e envia teste.
+- A função `meta-capi` só grava no log quando recebe `campaign_id`.
+- O botão de teste da aba Tracking hoje não envia `campaign_id`, então o histórico pode ficar vazio mesmo se o envio funcionar.
+- Na base atual há 0 eventos CAPI.
 
+6. Robustez para “sem bugs agora e no futuro”
+- Fazer revisão completa das partes críticas:
+  - autenticação
+  - tracking público
+  - webhook de vendas
+  - notificações
+  - realtime do mapa
+  - importação Meta Ads
+- Adicionar validações defensivas, mensagens claras e tolerância a erros.
+- Rever modelagem para reduzir acoplamento entre campanhas, páginas, vendas e integrações.
+- Se necessário, criar funções/backend helpers para métricas agregadas em vez de calcular tudo no frontend.
+
+Implementação prevista
+- `src/pages/Campaigns.tsx`: UX do Facebook, métricas gerais, estado da conta, robustez do mapa
+- `src/pages/Pages.tsx`: dashboard de analytics mais completo
+- `src/pages/Tracking.tsx`: estado funcional real + histórico correto
+- `supabase/functions/fb-token-exchange/index.ts`: validação e robustez do fluxo Meta
+- `supabase/functions/track/index.ts`: validação de visitante e tracking
+- `supabase/functions/track-cta/index.ts`: validação de CTA
+- `supabase/functions/meta-capi/index.ts`: logging correto e consistência
+- `supabase/functions/hotmart-webhook/index.ts`: segurança, atribuição e confiabilidade
+- Migrações/regras de acesso: endurecer segurança onde necessário
+
+Resultado final esperado
+- Campanhas: conectar Facebook de forma clara, escolher conta, puxar métricas gerais e ver o mapa acender com vendas reais.
+- Páginas: ver analytics úteis de verdade, incluindo CTAs e comportamento.
+- Tracking API: salvar, testar e auditar eventos corretamente.
+- Segurança: boa proteção por acesso + endurecimento dos pontos ainda frágeis, sem prometer “segurança máxima absoluta”, mas deixando o sistema muito mais robusto e profissional.
