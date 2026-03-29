@@ -111,8 +111,8 @@ export default function Tracking() {
               </div>
             ) : (
               <div className="flex items-center justify-center gap-1 mt-1">
-                <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                <span className="text-sm font-medium text-yellow-500">Não configurado</span>
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+                <span className="text-sm font-medium text-destructive">Não configurado</span>
               </div>
             )}
           </CardContent>
