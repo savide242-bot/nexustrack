@@ -228,8 +228,13 @@ export default function Campaigns() {
         }
         setFbLoading(false);
       },
-      { scope: "ads_read,ads_management,business_management" }
-    );
+        { scope: "ads_read,ads_management,business_management" }
+      );
+    } catch (e: any) {
+      clearTimeout(fallbackTimer);
+      setFbLoading(false);
+      toast({ title: "Popup bloqueado", description: "Permita popups para este site e tente novamente.", variant: "destructive" });
+    }
   };
 
   // Save selected ad account
