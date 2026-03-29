@@ -166,21 +166,41 @@ export default function Campaigns() {
     return () => { supabase.removeChannel(channel); };
   }, [user, loadSales]);
 
+  // Detect iframe
+  const isInIframe = (() => {
+    try { return window.self !== window.top; } catch { return true; }
+  })();
+
   // Facebook Login
   const handleFbLogin = () => {
+    if (isInIframe) {
+      toast({
+        title: "Abra na URL publicada",
+        description: "O login Facebook não funciona no preview. Acesse nexustrack.lovable.app para conectar.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!sdkLoaded) {
       toast({ title: "Facebook SDK a carregar...", description: "Tenta novamente em alguns segundos" });
       return;
     }
     setFbLoading(true);
 
-    (window as any).FB.login(
-      async (response: any) => {
-        if (response.status !== "connected" || !response.authResponse?.accessToken) {
-          setFbLoading(false);
-          toast({ title: "Login cancelado", variant: "destructive" });
-          return;
-        }
+    // Fallback timeout in case popup is silently blocked
+    const fallbackTimer = setTimeout(() => {
+      setFbLoading(false);
+    }, 30000);
+
+    try {
+      (window as any).FB.login(
+        async (response: any) => {
+          clearTimeout(fallbackTimer);
+          if (response.status !== "connected" || !response.authResponse?.accessToken) {
+            setFbLoading(false);
+            toast({ title: "Login cancelado", variant: "destructive" });
+            return;
+          }
 
         try {
           const shortToken = response.authResponse.accessToken;
@@ -208,8 +228,13 @@ export default function Campaigns() {
         }
         setFbLoading(false);
       },
-      { scope: "ads_read,ads_management,business_management" }
-    );
+        { scope: "ads_read,ads_management,business_management" }
+      );
+    } catch (e: any) {
+      clearTimeout(fallbackTimer);
+      setFbLoading(false);
+      toast({ title: "Popup bloqueado", description: "Permita popups para este site e tente novamente.", variant: "destructive" });
+    }
   };
 
   // Save selected ad account
@@ -477,7 +502,7 @@ export default function Campaigns() {
                     const tip = getCountryTooltip(geo);
                     return (
                       <Geography
-                        key={geo.rsSVGPath || geo.id}
+                        key={geo.rsmKey || geo.id}
                         geography={geo}
                         fill={getCountryFill(geo)}
                         stroke="hsl(var(--border))"
