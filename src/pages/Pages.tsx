@@ -41,10 +41,10 @@ export default function Pages() {
     if (data) {
       setPages(data as Page[]);
       for (const page of data) {
-        const [{ count: visitors }, { data: clicks }] = await Promise.all([
-          supabase.from("leads_clicks").select("*", { count: "exact", head: true }).eq("page_id" as any, page.id),
-          supabase.from("cta_clicks").select("button_id, button_text").eq("page_id" as any, page.id),
-        ]);
+        const leadsRes = await (supabase.from("leads_clicks") as any).select("*", { count: "exact", head: true }).eq("page_id", page.id);
+        const ctaRes = await (supabase.from("cta_clicks") as any).select("button_id, button_text").eq("page_id", page.id);
+        const visitors = leadsRes.count;
+        const clicks = ctaRes.data;
 
         const ctaMap: Record<string, { text: string; count: number }> = {};
         (clicks || []).forEach((c: any) => {
