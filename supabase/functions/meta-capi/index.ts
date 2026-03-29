@@ -12,50 +12,63 @@ async function hashSHA256(value: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+function sanitize(val: unknown, maxLen = 500): string {
+  if (typeof val !== "string") return "";
+  return val.trim().slice(0, maxLen);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { campaign_id, pixel_id, access_token, event_name, event_data } = await req.json();
+    const body = await req.json();
+    const { campaign_id, pixel_id, access_token, event_name, event_data, user_id } = body;
 
-    if (!pixel_id || !access_token || !event_name) {
-      return new Response(JSON.stringify({ error: "pixel_id, access_token, event_name required" }), { status: 400, headers: corsHeaders });
+    if (!pixel_id || typeof pixel_id !== "string" || !/^\d{10,20}$/.test(pixel_id)) {
+      return new Response(JSON.stringify({ error: "Invalid pixel_id" }), { status: 400, headers: corsHeaders });
+    }
+    if (!access_token || typeof access_token !== "string" || access_token.length < 10) {
+      return new Response(JSON.stringify({ error: "Invalid access_token" }), { status: 400, headers: corsHeaders });
+    }
+    if (!event_name || typeof event_name !== "string") {
+      return new Response(JSON.stringify({ error: "event_name required" }), { status: 400, headers: corsHeaders });
     }
 
+    const safeEventData = event_data || {};
     const eventId = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
 
-    // Hash user data for Meta CAPI (required by Facebook)
+    // Hash user data for Meta CAPI
     const userData: Record<string, any> = {};
-    if (event_data.email) userData.em = [await hashSHA256(event_data.email)];
-    if (event_data.phone) userData.ph = [await hashSHA256(event_data.phone)];
-    if (event_data.name) {
-      const parts = event_data.name.trim().split(" ");
+    if (safeEventData.email) userData.em = [await hashSHA256(sanitize(safeEventData.email, 320))];
+    if (safeEventData.phone) userData.ph = [await hashSHA256(sanitize(safeEventData.phone, 30))];
+    if (safeEventData.name) {
+      const parts = String(safeEventData.name).trim().split(" ");
       userData.fn = [await hashSHA256(parts[0])];
       if (parts.length > 1) userData.ln = [await hashSHA256(parts[parts.length - 1])];
     }
-    if (event_data.city) userData.ct = [await hashSHA256(event_data.city)];
-    if (event_data.state) userData.st = [await hashSHA256(event_data.state)];
-    if (event_data.zip_code) userData.zp = [await hashSHA256(event_data.zip_code)];
-    if (event_data.country) userData.country = [await hashSHA256(event_data.country)];
-    if (event_data.ip_address) userData.client_ip_address = event_data.ip_address;
-    if (event_data.user_agent) userData.client_user_agent = event_data.user_agent;
-    if (event_data.fbc) userData.fbc = event_data.fbc;
-    if (event_data.fbp) userData.fbp = event_data.fbp;
-    userData.external_id = [await hashSHA256(event_data.email || event_data.phone || eventId)];
+    if (safeEventData.city) userData.ct = [await hashSHA256(sanitize(safeEventData.city, 100))];
+    if (safeEventData.state) userData.st = [await hashSHA256(sanitize(safeEventData.state, 100))];
+    if (safeEventData.zip_code) userData.zp = [await hashSHA256(sanitize(safeEventData.zip_code, 20))];
+    if (safeEventData.country) userData.country = [await hashSHA256(sanitize(safeEventData.country, 5))];
+    if (safeEventData.ip_address) userData.client_ip_address = sanitize(safeEventData.ip_address, 45);
+    if (safeEventData.user_agent) userData.client_user_agent = sanitize(safeEventData.user_agent, 500);
+    if (safeEventData.fbc) userData.fbc = sanitize(safeEventData.fbc, 200);
+    if (safeEventData.fbp) userData.fbp = sanitize(safeEventData.fbp, 200);
+    userData.external_id = [await hashSHA256(safeEventData.email || safeEventData.phone || eventId)];
 
     const eventPayload = {
       data: [{
-        event_name: event_name,
+        event_name,
         event_time: now,
         event_id: eventId,
         action_source: "website",
         user_data: userData,
-        ...(event_data.value ? {
+        ...(safeEventData.value ? {
           custom_data: {
-            value: event_data.value,
-            currency: event_data.currency || "USD",
-            content_name: event_data.product_name || "",
+            value: Number(safeEventData.value) || 0,
+            currency: sanitize(safeEventData.currency || "USD", 3),
+            content_name: sanitize(safeEventData.product_name, 200),
           }
         } : {}),
       }],
@@ -70,26 +83,26 @@ Deno.serve(async (req) => {
     });
     const metaResponse = await metaRes.json();
 
-    // Log the event
-    if (campaign_id) {
-      const supabase = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
-      await supabase.from("capi_events_log").insert({
-        campaign_id,
-        event_name,
-        event_id: eventId,
-        payload: eventPayload,
-        status: metaRes.ok ? "sent" : "error",
-        response: metaResponse,
-      });
-    }
+    // Always log the event (not just when campaign_id exists)
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    await supabase.from("capi_events_log").insert({
+      campaign_id: campaign_id || null,
+      user_id: user_id || null,
+      event_name,
+      event_id: eventId,
+      payload: eventPayload,
+      status: metaRes.ok ? "sent" : "error",
+      response: metaResponse,
+    });
 
     return new Response(JSON.stringify({ ok: metaRes.ok, event_id: eventId, response: metaResponse }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
+  } catch (e: any) {
+    console.error("CAPI error:", e);
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
   }
 });
