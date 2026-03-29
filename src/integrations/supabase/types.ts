@@ -332,6 +332,7 @@ export type Database = {
         Row: {
           company: string | null
           created_at: string
+          fb_ad_account_id: string | null
           full_name: string | null
           hotmart_token: string | null
           id: string
@@ -343,6 +344,7 @@ export type Database = {
         Insert: {
           company?: string | null
           created_at?: string
+          fb_ad_account_id?: string | null
           full_name?: string | null
           hotmart_token?: string | null
           id?: string
@@ -354,6 +356,7 @@ export type Database = {
         Update: {
           company?: string | null
           created_at?: string
+          fb_ad_account_id?: string | null
           full_name?: string | null
           hotmart_token?: string | null
           id?: string
