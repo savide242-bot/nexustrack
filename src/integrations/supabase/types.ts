@@ -14,16 +14,388 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      campaigns: {
+        Row: {
+          created_at: string
+          domain: string | null
+          google_ads_id: string | null
+          hotmart_token: string | null
+          id: string
+          is_active: boolean
+          meta_access_token: string | null
+          meta_pixel_id: string | null
+          name: string
+          tiktok_access_token: string | null
+          tiktok_pixel_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          domain?: string | null
+          google_ads_id?: string | null
+          hotmart_token?: string | null
+          id?: string
+          is_active?: boolean
+          meta_access_token?: string | null
+          meta_pixel_id?: string | null
+          name: string
+          tiktok_access_token?: string | null
+          tiktok_pixel_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string | null
+          google_ads_id?: string | null
+          hotmart_token?: string | null
+          id?: string
+          is_active?: boolean
+          meta_access_token?: string | null
+          meta_pixel_id?: string | null
+          name?: string
+          tiktok_access_token?: string | null
+          tiktok_pixel_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cta_clicks: {
+        Row: {
+          button_id: string | null
+          button_text: string | null
+          campaign_id: string
+          converted: boolean | null
+          created_at: string
+          id: string
+          lead_id: string | null
+          page_url: string | null
+        }
+        Insert: {
+          button_id?: string | null
+          button_text?: string | null
+          campaign_id: string
+          converted?: boolean | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          page_url?: string | null
+        }
+        Update: {
+          button_id?: string | null
+          button_text?: string | null
+          campaign_id?: string
+          converted?: boolean | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          page_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cta_clicks_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cta_clicks_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_clicks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads_clicks: {
+        Row: {
+          campaign_id: string
+          city: string | null
+          country: string | null
+          created_at: string
+          email: string | null
+          fbc: string | null
+          fbp: string | null
+          fingerprint: string | null
+          id: string
+          ip_address: string | null
+          lead_score: number | null
+          name: string | null
+          page_url: string | null
+          phone: string | null
+          referrer: string | null
+          state: string | null
+          time_on_page: number | null
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          campaign_id: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          email?: string | null
+          fbc?: string | null
+          fbp?: string | null
+          fingerprint?: string | null
+          id?: string
+          ip_address?: string | null
+          lead_score?: number | null
+          name?: string | null
+          page_url?: string | null
+          phone?: string | null
+          referrer?: string | null
+          state?: string | null
+          time_on_page?: number | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          email?: string | null
+          fbc?: string | null
+          fbp?: string | null
+          fingerprint?: string | null
+          id?: string
+          ip_address?: string | null
+          lead_score?: number | null
+          name?: string | null
+          page_url?: string | null
+          phone?: string | null
+          referrer?: string | null
+          state?: string | null
+          time_on_page?: number | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          zip_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_clicks_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications_log: {
+        Row: {
+          body: string
+          id: string
+          sale_id: string | null
+          sent_at: string
+          status: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          id?: string
+          sale_id?: string | null
+          sent_at?: string
+          status?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          id?: string
+          sale_id?: string | null
+          sent_at?: string
+          status?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_log_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          company: string | null
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          company?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      push_subscriptions: {
+        Row: {
+          auth_key: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          user_id: string
+        }
+        Insert: {
+          auth_key: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          user_id: string
+        }
+        Update: {
+          auth_key?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      sales: {
+        Row: {
+          amount_mzn: number | null
+          buyer_email: string | null
+          buyer_name: string | null
+          buyer_phone: string | null
+          campaign_id: string | null
+          created_at: string
+          exchange_rate: number | null
+          hotmart_payload: Json | null
+          id: string
+          lead_id: string | null
+          original_amount: number
+          original_currency: string
+          platform: string
+          product_name: string | null
+          status: string
+          transaction_id: string | null
+        }
+        Insert: {
+          amount_mzn?: number | null
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          exchange_rate?: number | null
+          hotmart_payload?: Json | null
+          id?: string
+          lead_id?: string | null
+          original_amount: number
+          original_currency?: string
+          platform?: string
+          product_name?: string | null
+          status?: string
+          transaction_id?: string | null
+        }
+        Update: {
+          amount_mzn?: number | null
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          exchange_rate?: number | null
+          hotmart_payload?: Json | null
+          id?: string
+          lead_id?: string | null
+          original_amount?: number
+          original_currency?: string
+          platform?: string
+          product_name?: string | null
+          status?: string
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_clicks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +522,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const
