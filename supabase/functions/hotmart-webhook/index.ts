@@ -16,6 +16,19 @@ Deno.serve(async (req) => {
     );
 
     // Extract data from Hotmart webhook
+    // Filter out test webhooks
+    const isTest = payload.test === true || 
+      payload.data?.test === true ||
+      (payload.data?.buyer?.email || payload.buyer?.email || "").toLowerCase().includes("@example.com") ||
+      (payload.data?.buyer?.email || payload.buyer?.email || "").toLowerCase().includes("postman") ||
+      (payload.data?.buyer?.name || payload.buyer?.name || "").toLowerCase().startsWith("teste");
+
+    if (isTest) {
+      return new Response(JSON.stringify({ ok: true, skipped: "test webhook" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const event = payload.event || payload.data?.event || "";
     const purchase = payload.data?.purchase || payload.purchase || {};
     const buyer = payload.data?.buyer || payload.buyer || {};

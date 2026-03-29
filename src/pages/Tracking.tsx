@@ -110,7 +110,7 @@ export default function Tracking() {
             <Label>Access Token (CAPI)</Label>
             <Input value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="EAAxxxxxxx" type="password" />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button onClick={handleSave} className="gradient-primary text-primary-foreground" disabled={saving}>
               {saving ? "Salvando..." : "Salvar Configuração"}
             </Button>
