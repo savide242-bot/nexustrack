@@ -5,18 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ShoppingCart } from "lucide-react";
-import type { Tables } from "@/integrations/supabase/types";
-
-type Sale = Tables<"sales">;
 
 export default function Sales() {
   const { user } = useAuth();
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) return;
     const fetchSales = async () => {
-      const { data } = await supabase.from("sales").select("*").order("created_at", { ascending: false });
+      // Fetch sales with lead data for country/utm_source
+      const { data } = await supabase.from("sales").select("*, leads_clicks(country, city, utm_source)").order("created_at", { ascending: false });
       if (data) setSales(data);
     };
     fetchSales();
@@ -59,29 +57,36 @@ export default function Sales() {
                 <TableHead>Original</TableHead>
                 <TableHead>MZN</TableHead>
                 <TableHead>Câmbio</TableHead>
+                <TableHead>País</TableHead>
+                <TableHead>Fonte</TableHead>
                 <TableHead>Plataforma</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Data</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sales.map((s) => (
-                <TableRow key={s.id} className="border-border">
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{s.buyer_name || "—"}</p>
-                      <p className="text-xs text-muted-foreground">{s.buyer_email || ""}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{s.product_name || "—"}</TableCell>
-                  <TableCell className="font-mono text-sm">{s.original_amount} {s.original_currency}</TableCell>
-                  <TableCell className="font-mono text-sm font-bold text-primary">{s.amount_mzn?.toLocaleString("pt-MZ")} MT</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{s.exchange_rate?.toFixed(2)}</TableCell>
-                  <TableCell><Badge variant="outline" className="border-border">{s.platform}</Badge></TableCell>
-                  <TableCell><Badge className={statusColor(s.status)}>{s.status}</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{new Date(s.created_at).toLocaleDateString("pt-MZ")}</TableCell>
-                </TableRow>
-              ))}
+              {sales.map((s) => {
+                const lead = s.leads_clicks;
+                return (
+                  <TableRow key={s.id} className="border-border">
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{s.buyer_name || "—"}</p>
+                        <p className="text-xs text-muted-foreground">{s.buyer_email || ""}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{s.product_name || "—"}</TableCell>
+                    <TableCell className="font-mono text-sm">{s.original_amount} {s.original_currency}</TableCell>
+                    <TableCell className="font-mono text-sm font-bold text-primary">{s.amount_mzn?.toLocaleString("pt-MZ")} MT</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{s.exchange_rate?.toFixed(2)}</TableCell>
+                    <TableCell className="text-sm">{lead?.country || "—"}</TableCell>
+                    <TableCell className="text-sm">{lead?.utm_source || "—"}</TableCell>
+                    <TableCell><Badge variant="outline" className="border-border">{s.platform}</Badge></TableCell>
+                    <TableCell><Badge className={statusColor(s.status)}>{s.status}</Badge></TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{new Date(s.created_at).toLocaleDateString("pt-MZ")}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </Card>

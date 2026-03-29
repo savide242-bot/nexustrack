@@ -123,7 +123,7 @@ export default function Index() {
 
       {/* Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard title="Vendas (MZN)" value={`${totalMzn.toLocaleString("pt-MZ")} MT`} icon={DollarSign} change="+12% esta semana" />
+        <MetricCard title="Vendas (MZN)" value={`${totalMzn.toLocaleString("pt-MZ")} MT`} icon={DollarSign} />
         <MetricCard title="Total Vendas" value={String(totalSales)} icon={ShoppingCart} />
         <MetricCard title="Leads" value={String(totalLeads)} icon={Users} />
         <MetricCard title="Conversão" value={`${conversionRate}%`} icon={Target} />
