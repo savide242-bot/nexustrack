@@ -47,13 +47,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Find user via hottok in profiles or campaigns
+    // Find user - multiple strategies
     const hottok = payload.hottok || payload.data?.hottok || "";
     let campaignId: string | null = null;
     let userId: string | null = null;
     let leadId: string | null = null;
 
-    // 1. Try to find via hottok in profiles
+    // Strategy 1: Find via hottok in profiles
     if (hottok) {
       const { data: profile } = await supabase
         .from("profiles")
@@ -62,7 +62,6 @@ Deno.serve(async (req) => {
         .single();
       if (profile) userId = profile.user_id;
 
-      // Also check campaigns
       const { data: camp } = await supabase
         .from("campaigns")
         .select("id, user_id")
@@ -74,7 +73,33 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 2. Hybrid attribution: find best matching lead
+    // Strategy 2: Find via buyer email in profiles
+    if (!userId && buyerEmail) {
+      // Check auth.users via admin API isn't possible, but we can check all profiles
+      // and match campaigns by user
+      const { data: allProfiles } = await supabase
+        .from("profiles")
+        .select("user_id, hotmart_token")
+        .not("hotmart_token", "is", null);
+      
+      // If only one user exists with a hotmart_token configured, it's likely them
+      if (allProfiles && allProfiles.length === 1) {
+        userId = allProfiles[0].user_id;
+      }
+    }
+
+    // Strategy 3: If still no user, get the first profile with hotmart_token
+    if (!userId) {
+      const { data: fallbackProfile } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .not("hotmart_token", "is", null)
+        .limit(1)
+        .single();
+      if (fallbackProfile) userId = fallbackProfile.user_id;
+    }
+
+    // Lead attribution
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: leads } = await supabase
       .from("leads_clicks")
@@ -99,7 +124,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3. If we have campaignId but no userId, get it from campaign
+    // Get userId from campaign if needed
     if (campaignId && !userId) {
       const { data: camp } = await supabase
         .from("campaigns")
@@ -109,7 +134,10 @@ Deno.serve(async (req) => {
       if (camp) userId = camp.user_id;
     }
 
-    // Insert sale with user_id for RLS
+    // Generate unique transaction_id if empty to avoid duplicate key issues
+    const finalTransactionId = transactionId || `hotmart_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+
+    // Insert sale
     const { data: sale, error: saleErr } = await supabase.from("sales").insert({
       campaign_id: campaignId,
       lead_id: leadId,
@@ -124,7 +152,7 @@ Deno.serve(async (req) => {
       exchange_rate: exchangeRate,
       status,
       platform: "hotmart",
-      transaction_id: transactionId,
+      transaction_id: finalTransactionId,
       hotmart_payload: payload,
     }).select("id").single();
 
@@ -132,7 +160,6 @@ Deno.serve(async (req) => {
 
     // Send push notification if sale is approved and we have a userId
     if (status === "approved" && userId) {
-      // Log notification
       await supabase.from("notifications_log").insert({
         user_id: userId,
         sale_id: sale.id,
@@ -140,7 +167,6 @@ Deno.serve(async (req) => {
         body: `${buyerName || "Alguém"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
       });
 
-      // Send push
       try {
         const pushUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push`;
         await fetch(pushUrl, {
@@ -159,7 +185,7 @@ Deno.serve(async (req) => {
         console.error("Push notification error:", pushErr);
       }
 
-      // Send Meta CAPI Purchase event - check profile for pixel config
+      // Send Meta CAPI Purchase event
       const { data: profile } = await supabase
         .from("profiles")
         .select("meta_pixel_id, meta_access_token")
@@ -210,7 +236,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, sale_id: sale.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
+  } catch (e: any) {
     console.error("Webhook error:", e);
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
   }

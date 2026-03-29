@@ -5,38 +5,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Web Push implementation using VAPID
-function base64UrlToUint8Array(base64Url: string): Uint8Array {
-  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = base64.length % 4 === 0 ? "" : "=".repeat(4 - (base64.length % 4));
-  const raw = atob(base64 + pad);
-  return new Uint8Array([...raw].map(c => c.charCodeAt(0)));
-}
-
-async function sendWebPush(subscription: { endpoint: string; p256dh: string; auth_key: string }, payload: string): Promise<boolean> {
-  try {
-    // For Deno, we use a simple fetch-based approach to the push endpoint
-    // This works for testing; in production you'd use proper VAPID signing
-    const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY")!;
-    const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY")!;
-    
-    // Import web-push compatible library
-    // Using direct fetch to push service with proper headers
-    const response = await fetch(subscription.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "TTL": "86400",
-      },
-      body: payload,
-    });
-
-    return response.ok || response.status === 201;
-  } catch (err) {
-    console.error("Push send error:", err);
-    return false;
-  }
-}
+// Web Push with VAPID - RFC 8291 encryption
+// Using web-push library for Deno
+import webpush from "https://esm.sh/web-push@3.6.7";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -48,12 +19,20 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "user_id, title, body required" }), { status: 400, headers: corsHeaders });
     }
 
+    const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY")!;
+    const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY")!;
+
+    webpush.setVapidDetails(
+      "mailto:admin@nexustrack.app",
+      vapidPublicKey,
+      vapidPrivateKey
+    );
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get all push subscriptions for user
     const { data: subscriptions } = await supabase
       .from("push_subscriptions")
       .select("*")
@@ -65,18 +44,37 @@ Deno.serve(async (req) => {
       });
     }
 
-    const payload = JSON.stringify({ title, body, icon: "/icons/icon-192x192.png" });
+    const payload = JSON.stringify({ title, body, icon: "/icon-192.png" });
     let sent = 0;
+    const failed: string[] = [];
 
     for (const sub of subscriptions) {
-      const success = await sendWebPush(sub, payload);
-      if (success) sent++;
+      try {
+        const pushSubscription = {
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: sub.p256dh,
+            auth: sub.auth_key,
+          },
+        };
+
+        await webpush.sendNotification(pushSubscription, payload);
+        sent++;
+      } catch (err: any) {
+        console.error("Push send error for endpoint:", sub.endpoint, err.message);
+        // If subscription is expired/invalid (410 Gone or 404), remove it
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await supabase.from("push_subscriptions").delete().eq("id", sub.id);
+          failed.push(sub.id);
+        }
+      }
     }
 
-    return new Response(JSON.stringify({ ok: true, sent, total: subscriptions.length }), {
+    return new Response(JSON.stringify({ ok: true, sent, total: subscriptions.length, cleaned: failed.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
+  } catch (e: any) {
+    console.error("Send push error:", e);
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
   }
 });
