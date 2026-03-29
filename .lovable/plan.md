@@ -1,23 +1,49 @@
 
 
-# Plano — 3 Correções + Teste Push
+# Plano de Implementação — 4 Pontos
 
-## 1. Limpar vendas de teste + filtrar no webhook
-- **Apagar** todas as 10 vendas de teste existentes no banco (via SQL DELETE)
-- **No webhook `hotmart-webhook`**: adicionar filtro para ignorar webhooks de teste da Hotmart — detectar via emails como `*@example.com`, `*postman*`, nomes como `Teste*`, ou campo `test: true` no payload. Retornar `{ ok: true, skipped: "test webhook" }` sem inserir
+## 1. Mapa sempre visível — países acendem com vendas
+Remover a estrutura de `Tabs` na página Campanhas. O mapa fica **sempre visível** abaixo dos dados de anúncios. Todos os países aparecem em cinza escuro. Quando há vendas num país, o polígono do país muda para verde (intensidade proporcional ao volume). Subscrição realtime em `sales` para acender em tempo real.
 
-## 2. Tracking CAPI — botões responsivos
-**Ficheiro:** `src/pages/Tracking.tsx` linha 113
-- Mudar `<div className="flex gap-2">` para `<div className="flex flex-col sm:flex-row gap-2">` para os botões empilharem em mobile
+**Mudança:** Usar `Geography` fill dinâmico baseado em `salesByCountryCode` em vez de `Marker`. O mapa do mundo fica permanente — sem tabs.
 
-## 3. Enviar notificação de boas-vindas para testar VAPID
-- Chamar a edge function `send-push` com o `user_id` do utilizador actual, título "Bem-vindo ao NexusTrack!" e corpo "As notificações push estão activas. Receberá alertas de cada venda em tempo real."
-- A subscrição push já existe na tabela (`push_subscriptions` tem 1 registo para o utilizador)
-- A função `send-push` usa `web-push` com VAPID — se funcionar, confirma que o sistema está operacional
+## 2. Facebook Login OAuth (Marketing API)
+O utilizador quer clicar "Conectar Facebook" → popup de login do FB → autorizar → app puxa ad accounts automaticamente. Isto usa o **Facebook JavaScript SDK** (`FB.login()`) — diferente do login de autenticação.
 
-## Ficheiros a editar
-1. **SQL DELETE** — remover todas as vendas de teste
-2. **`supabase/functions/hotmart-webhook/index.ts`** — adicionar filtro de teste no início
-3. **`src/pages/Tracking.tsx`** — botões responsivos
-4. **Invocar `send-push`** — notificação de boas-vindas (via curl à edge function)
+**Fluxo:**
+1. Carregar FB JS SDK dinamicamente no componente
+2. `FB.login()` com permissões `ads_read, ads_management, business_management`
+3. Receber short-lived token → enviar para edge function `fb-token-exchange`
+4. Edge function troca por long-lived token usando App Secret (guardado como secret seguro)
+5. Guardar long-lived token + listar ad accounts via `/me/adaccounts`
+6. Utilizador selecciona ad account → guardar no perfil
+
+**Requisitos do utilizador:**
+- Criar Facebook App em developers.facebook.com
+- Fornecer o **Facebook App ID** (público, vai no código)
+- Fornecer o **Facebook App Secret** (secreto, guardado como secret do servidor via `add_secret`)
+
+## 3. Vendas orgânicas marcam sempre
+O webhook já funciona, mas vou verificar que o filtro de teste não bloqueia vendas reais. O filtro só rejeita:
+- `payload.test === true`
+- Emails literalmente com `@example.com`
+- Nomes que começam exactamente com "teste"
+
+Vendas orgânicas sem hottok continuam a funcionar via fallback (Strategy 2/3 que encontra o user_id pelo perfil).
+
+## 4. Enviar notificação de teste
+Invocar `send-push` com formato: "💰 Nova venda! — João Silva pagou 3.500 MT em Hotmart"
+
+## Ficheiros a criar/editar
+1. **`src/pages/Campaigns.tsx`** — mapa permanente com países que acendem + botão "Conectar Facebook" com FB SDK
+2. **Nova: `supabase/functions/fb-token-exchange/index.ts`** — troca token short→long e lista ad accounts
+3. **Secret: `FB_APP_SECRET`** — necessário para token exchange (vou pedir via `add_secret`)
+4. **Invocar `send-push`** — notificação de teste
+
+## Informação necessária
+Antes de implementar o login Facebook, preciso que forneças:
+- **Facebook App ID** — encontras em developers.facebook.com → Your App → Settings → Basic
+- **Facebook App Secret** — mesmo local, campo "App Secret"
+
+Vou pedir o App Secret via ferramenta segura. O App ID é público e pode ficar no código.
 
