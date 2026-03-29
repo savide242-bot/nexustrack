@@ -1,49 +1,41 @@
 
 
-# Plano de Implementação — 4 Pontos
+# Plano — 3 Correções
 
-## 1. Mapa sempre visível — países acendem com vendas
-Remover a estrutura de `Tabs` na página Campanhas. O mapa fica **sempre visível** abaixo dos dados de anúncios. Todos os países aparecem em cinza escuro. Quando há vendas num país, o polígono do país muda para verde (intensidade proporcional ao volume). Subscrição realtime em `sales` para acender em tempo real.
+## 1. Botão Facebook não abre popup de login
 
-**Mudança:** Usar `Geography` fill dinâmico baseado em `salesByCountryCode` em vez de `Marker`. O mapa do mundo fica permanente — sem tabs.
+**Causa raiz:** O Facebook SDK bloqueia `FB.login()` quando executado dentro de um iframe (o preview do Lovable). O SDK carrega correctamente (vejo `app_id: 1108905534695999` na resposta da edge function), mas o popup é bloqueado pelo browser porque está num iframe cross-origin.
 
-## 2. Facebook Login OAuth (Marketing API)
-O utilizador quer clicar "Conectar Facebook" → popup de login do FB → autorizar → app puxa ad accounts automaticamente. Isto usa o **Facebook JavaScript SDK** (`FB.login()`) — diferente do login de autenticação.
+**Solução:**
+- Adicionar detecção de iframe no `handleFbLogin` — se estiver num iframe, mostrar um toast explicando que o login Facebook só funciona na URL publicada (`nexustrack.lovable.app`)
+- Adicionar um `try/catch` à volta do `FB.login()` para capturar erros de popup bloqueado e resetar o estado `fbLoading` correctamente
+- Garantir que o timeout de fallback reseta o loading se o popup for bloqueado silenciosamente
 
-**Fluxo:**
-1. Carregar FB JS SDK dinamicamente no componente
-2. `FB.login()` com permissões `ads_read, ads_management, business_management`
-3. Receber short-lived token → enviar para edge function `fb-token-exchange`
-4. Edge function troca por long-lived token usando App Secret (guardado como secret seguro)
-5. Guardar long-lived token + listar ad accounts via `/me/adaccounts`
-6. Utilizador selecciona ad account → guardar no perfil
+**Configuração necessária no Facebook Developers:**
+- Em **Settings → Basic**: Adicionar `nexustrack.lovable.app` em "App Domains"
+- Em **Facebook Login → Settings**: Adicionar `https://nexustrack.lovable.app` em "Valid OAuth Redirect URIs"
+- Em **Settings → Advanced**: Adicionar `nexustrack.lovable.app` em "Allowed Domains for the JavaScript SDK"
+- A App deve estar em modo **Live** (não Development)
 
-**Requisitos do utilizador:**
-- Criar Facebook App em developers.facebook.com
-- Fornecer o **Facebook App ID** (público, vai no código)
-- Fornecer o **Facebook App Secret** (secreto, guardado como secret do servidor via `add_secret`)
+## 2. Verificação geral de funcionalidades
 
-## 3. Vendas orgânicas marcam sempre
-O webhook já funciona, mas vou verificar que o filtro de teste não bloqueia vendas reais. O filtro só rejeita:
-- `payload.test === true`
-- Emails literalmente com `@example.com`
-- Nomes que começam exactamente com "teste"
+Vou verificar e corrigir:
+- **Mapa de vendas**: Está presente e funcional (já confirmado no código — `Geography` fill dinâmico + realtime subscription). OK.
+- **Meta Ads OAuth**: O fluxo está correcto no código — o problema é apenas o iframe. Na URL publicada vai funcionar.
+- **Webhook Hotmart**: O filtro de teste só bloqueia `test === true`, emails `@example.com`, e nomes exactos "teste". Vendas orgânicas passam.
+- **Notificações push**: Enviar notificação de teste para confirmar formato.
+- **Console warnings**: Corrigir o warning `key` no `Geographies` (usar `geo.rsmKey` em vez de `geo.rsSVGPath`)
 
-Vendas orgânicas sem hottok continuam a funcionar via fallback (Strategy 2/3 que encontra o user_id pelo perfil).
+## 3. Refazer logotipo/ícone PWA
 
-## 4. Enviar notificação de teste
-Invocar `send-push` com formato: "💰 Nova venda! — João Silva pagou 3.500 MT em Hotmart"
+Criar um ícone PWA profissional e moderno para o NexusTrack Pro:
+- Design clean com tema verde (#00FF7F) sobre fundo escuro (#121212)
+- Forma geométrica moderna (não texto genérico)
+- Gerar ícones 192x192 e 512x512 via SVG inline convertido
+- Actualizar `public/manifest.json` se necessário
 
-## Ficheiros a criar/editar
-1. **`src/pages/Campaigns.tsx`** — mapa permanente com países que acendem + botão "Conectar Facebook" com FB SDK
-2. **Nova: `supabase/functions/fb-token-exchange/index.ts`** — troca token short→long e lista ad accounts
-3. **Secret: `FB_APP_SECRET`** — necessário para token exchange (vou pedir via `add_secret`)
-4. **Invocar `send-push`** — notificação de teste
-
-## Informação necessária
-Antes de implementar o login Facebook, preciso que forneças:
-- **Facebook App ID** — encontras em developers.facebook.com → Your App → Settings → Basic
-- **Facebook App Secret** — mesmo local, campo "App Secret"
-
-Vou pedir o App Secret via ferramenta segura. O App ID é público e pode ficar no código.
+## Ficheiros a editar
+1. **`src/pages/Campaigns.tsx`** — fix FB login iframe detection + key warning
+2. **Invocar `send-push`** — notificação de teste
+3. **Gerar ícones PWA** — criar SVGs profissionais para 192x192 e 512x512
 
