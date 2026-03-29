@@ -1,105 +1,98 @@
 
 
-# NexusTrack Pro — Plano de Implementação
+# NexusTrack Pro — Plano Completo Refatorado
 
-## Visão Geral
-App full-stack de analytics e tracking de vendas em **meticais (MZN)**, com conversão automática de câmbio, push notifications, PWA, rastreamento avançado para Facebook Pixel, e integração com Hotmart.
+## Resumo das 9 entregas
 
----
+### 1. Corrigir Dashboard — remover dados falsos
+- Remover `+12% esta semana` hardcoded do MetricCard de Vendas
+- Mostrar apenas dados reais do banco
 
-## Fase 1: Fundação (Auth + Layout + Database)
+### 2. Nova aba "Páginas"
+- **Nova tabela `pages`**: `id`, `user_id`, `campaign_id`, `url`, `name`, `created_at`
+- Nova página onde o utilizador adiciona a URL da página de vendas e recebe um script de tracking
+- O script captura: visitantes, cliques em CTAs (com ID e texto do botão), UTMs, fingerprint
+- Métricas exibidas: total visitantes, total cliques CTA, quais CTAs mais clicados, taxa de conversão por CTA
+- Rota `/pages` + link na sidebar
 
-### Autenticação
-- Login/Signup com email e senha via Lovable Cloud
-- Página de recuperação de senha
-- Proteção de rotas autenticadas
+### 3. Vendas — país de origem + vendas por fonte
+- Adicionar colunas **País** e **Fonte (utm_source)** na tabela de vendas
+- Cruzamento: `sales.lead_id → leads_clicks.country / utm_source`
+- Precisão 100%: dados vêm do lead associado via modelo híbrido de atribuição
 
-### Design System — Dark Mode
-- Fundo escuro `#121212` com acentos verde neon `#00FF7F`
-- Tipografia moderna, cards com glassmorphism sutil
-- Layout responsivo com sidebar de navegação
+### 4. Aba Campanhas — Facebook Ads + Mapa Mundial
+- **Facebook Ads via token manual**: o utilizador cola o **Access Token de longa duração** + **Ad Account ID** (já configurado no Meta Developers)
+- Dados salvos na tabela `campaigns` (colunas `fb_access_token`, `fb_ad_account_id`)
+- **Edge Function `facebook-ads`**: proxy server-side que busca campanhas, ad sets, ads, gastos, impressões, cliques, CPA, ROAS via Marketing API do Facebook
+- UI com tabela de métricas Facebook Ads (gasto, lucro, ROI, ROAS, CPA)
+- **Mapa mundial interativo** com `react-simple-maps`:
+  - Pontos amarelos nos países com vendas
+  - Zoom para ver cidades específicas
+  - Dados de `sales` cruzados com `leads_clicks.country/city`
 
-### Estrutura de Banco de Dados
-- **profiles** — dados do utilizador (nome, empresa)
-- **user_roles** — controle de acesso
-- **campaigns** — pixel IDs, tokens de API, configurações UTM
-- **leads_clicks** — log de visitas com UTMs, fingerprint, IP, user-agent, tempo de permanência
-- **sales** — conversões vinculadas a leads, valor original, moeda original, valor em MZN, taxa de câmbio
-- **cta_clicks** — rastreamento de cliques em botões de checkout
-- **notifications_log** — histórico de notificações enviadas
+### 5. Nova aba "Tracking" (CAPI Avançado)
+- Página dedicada ao rastreamento avançado Meta CAPI
+- Campos: Pixel ID + Access Token (salvos por campanha)
+- **Edge Function `meta-capi`** envia eventos com TODOS os dados reais do comprador:
+  - Email, nome completo, telefone, país, cidade, estado, CEP, IP, user-agent, FBC, FBP
+  - **Valor na moeda original** (USD/BRL/EUR) — NÃO em MZN — para o Meta receber dados reais
+  - Deduplicação via `event_id`
+  - Eventos: PageView, Lead, InitiateCheckout, Purchase
+- **Nova tabela `capi_events_log`**: id, campaign_id, event_name, event_id, payload (jsonb), status, response, created_at
+- Histórico de todos os eventos CAPI enviados visível na página
+- Rota `/tracking` + link na sidebar
 
----
+### 6. Integrações — salvar no banco + múltiplas plataformas
+- Refazer a página para carregar dados existentes ao montar e salvar com `supabase.update()`
+- Suportar: **Hotmart, Kiwify, Perfect Pay, Eduzz** (campo platform na UI, espaço para mais)
+- Mostrar URL do webhook com botão copiar:
+  `https://qjfnosljbyqzyrfhiybi.supabase.co/functions/v1/hotmart-webhook`
+- Remover VAPID da UI (será gerido como secret do servidor)
 
-## Fase 2: Dashboard Principal
+### 7. Push Notifications — OBRIGATÓRIO FUNCIONAR
+- **Guardar VAPID keys como secrets do servidor** via `add_secret`:
+  - `VAPID_PUBLIC_KEY`: `BAOhQu5GzLaWqPRGOnnJtxaooJsf5IX6IzZ2bfnyCehzXHebgQ-0jLhVZuU-hIjrteYi7R1E-eELWSht3dlk_Y0`
+  - `VAPID_PRIVATE_KEY`: `yDMbbUzqpcvN_KsRSQ0BbhM7wRcLWwt7SMNOQIUIUbM`
+- **Service Worker `public/sw.js`** para receber push events (funciona fora do app, com app fechado)
+- **Botão "Ativar Notificações"** na página de Notificações que pede permissão ao browser e salva subscription em `push_subscriptions`
+- **Edge Function `send-push`** que usa web-push com as VAPID keys para enviar notificações
+- Formato: **"[Nome] pagou X MZN em [Plataforma]"**
+- Chamada automática pelo webhook da Hotmart após cada venda aprovada
+- Deve funcionar fora do app, em background, sem falhas
 
-### Cards de Métricas em Tempo Real
-- Vendas Aprovadas (MZN), Boletos/Pix Pendentes, ROI, CPA, Taxa de Conversão
-- Atualização automática via subscriptions do Supabase
+### 8. Edge Functions (6 funções)
+- **`track`**: Recebe dados do pixel script → insere em `leads_clicks` → retorna `lead_id`
+- **`track-cta`**: Recebe cliques em CTAs → insere em `cta_clicks`
+- **`hotmart-webhook`**: Recebe webhooks Hotmart → converte moeda via ExchangeRate API → atribuição híbrida (email 40pts + telefone 30pts + fingerprint 20pts + UTM 10pts) → insere em `sales` → dispara `meta-capi` + `send-push`
+- **`meta-capi`**: Envia eventos para Conversions API do Facebook com dados reais
+- **`facebook-ads`**: Proxy para buscar métricas de campanhas do Facebook Ads
+- **`send-push`**: Envia push notification via VAPID/web-push para todas subscriptions do utilizador
 
-### Gráficos de Performance
-- Gráfico de linha — vendas diárias (últimos 7/30 dias)
-- Gráfico de pizza — distribuição por UTM Source
-- Gráfico de barras — performance por campanha
-
-### Tabela de Leads com Score IA
-- Score 0-100 por lead baseado em: tempo de permanência, nº de cliques em CTAs, páginas visitadas
-- Indicador visual colorido (vermelho → amarelo → verde)
-
----
-
-## Fase 3: Tracking Engine
-
-### Script de Pixel Próprio
-- Geração automática de script JS leve para cada campanha
-- Captura: UTMs (source, medium, campaign, content, term), IP, User-Agent, Referrer, Fingerprint único
-- Botão "Copiar Script" com configuração em menos de 1 minuto
-- Rastreamento automático de cliques em CTAs (botões de checkout)
-
-### Rastreamento Avançado para Facebook CAPI
-- Edge Function que envia eventos para a Conversions API do Facebook: PageView, Lead, InitiateCheckout, Purchase
-- Dados enviados: nome, email, telefone, cidade, estado, país, CEP, IP, user-agent, FBC, FBP — máximo de dados possível para otimizar o pixel
-- Deduplicação de eventos (Browser + Server) via event_id
-- Suporte para Meta, Google Ads e TikTok CAPI
-
----
-
-## Fase 4: Integração Hotmart + Câmbio
-
-### Webhook Hotmart
-- Edge Function para receber webhooks da Hotmart (vendas aprovadas, reembolsos, etc.)
-- Cruzamento do email/telefone do comprador com fingerprint/UTM capturado para atribuição correta
-
-### Conversão Automática para Meticais
-- Integração com ExchangeRate API (gratuita) para câmbio em tempo real
-- Qualquer moeda (USD, BRL, EUR, etc.) → MZN automaticamente
-- Taxa de câmbio do dia armazenada junto com cada venda
-- Exibição no dashboard sempre em MZN
-
----
-
-## Fase 5: Push Notifications + PWA
-
-### PWA (Progressive Web App)
-- Instalável no telemóvel via browser
-- Manifest com ícones e branding dark/verde neon
-- Funciona offline para visualização do dashboard
-
-### Push Notifications (VAPID)
-- Configuração com VAPID keys fornecidas pelo utilizador
-- Notificação automática a cada venda aprovada
-- Formato: **"[Nome do comprador] pagou X MZN em [Hotmart]"**
-- Valor já convertido para meticais na notificação
-- Edge Function que dispara a notificação via Web Push API
+### 9. Migração de banco de dados
+- Nova tabela `pages` (id, user_id, campaign_id, url, name, created_at) com RLS
+- Nova tabela `capi_events_log` (id, campaign_id, event_name, event_id, payload, status, response, created_at) com RLS
+- Adicionar colunas em `campaigns`: `fb_access_token`, `fb_ad_account_id`
+- Habilitar realtime em `sales` e `notifications_log`
 
 ---
 
-## Páginas do App
+## Detalhes Técnicos
 
-1. **Login / Signup** — autenticação completa
-2. **Dashboard** — métricas, gráficos, leads com score
-3. **Campanhas** — criar/editar campanhas, gerar script de pixel
-4. **Vendas** — lista detalhada com valor original e valor em MZN
-5. **Leads** — tabela com fingerprint, UTMs, score IA, CTAs clicados
-6. **Integrações** — configurar tokens Hotmart, Meta Pixel, VAPID keys
-7. **Configurações** — perfil, preferências de notificação
+### Dependências novas
+- `react-simple-maps` — mapa mundial interativo SVG
+
+### Modelo de atribuição híbrido (no webhook)
+Ao receber venda, buscar leads dos últimos 7 dias e pontuar:
+- Email match: +40 pontos
+- Telefone match: +30 pontos
+- Fingerprint match: +20 pontos
+- UTM match: +10 pontos
+- Lead com maior score é associado à venda
+
+### Novas rotas
+- `/pages` — Páginas de vendas + script + métricas CTA
+- `/tracking` — CAPI avançado + histórico de eventos
+
+### Sidebar atualizada
+Adicionar: Páginas, Tracking (entre as existentes)
 
