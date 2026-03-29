@@ -421,26 +421,60 @@ export default function Campaigns() {
 
       {/* Summary cards */}
       {campaigns.length > 0 && (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-          <Card className="glass-card border-border">
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">Gasto Total</p>
-              <p className="text-2xl font-bold font-mono text-foreground">R$ {totalSpend.toFixed(2)}</p>
-            </CardContent>
-          </Card>
-          <Card className="glass-card border-border">
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">Compras</p>
-              <p className="text-2xl font-bold font-mono text-primary">{totalPurchases}</p>
-            </CardContent>
-          </Card>
-          <Card className="glass-card border-border">
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">ROAS Médio</p>
-              <p className="text-2xl font-bold font-mono text-foreground">{avgRoas.toFixed(2)}x</p>
-            </CardContent>
-          </Card>
-        </div>
+        <>
+          <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+            <Card className="glass-card border-border">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">Gasto Total</p>
+                <p className="text-xl font-bold font-mono text-foreground">R$ {totalSpend.toFixed(2)}</p>
+              </CardContent>
+            </Card>
+            <Card className="glass-card border-border">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">Compras</p>
+                <p className="text-xl font-bold font-mono text-primary">{totalPurchases}</p>
+              </CardContent>
+            </Card>
+            <Card className="glass-card border-border">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">ROAS Médio</p>
+                <p className="text-xl font-bold font-mono text-foreground">{avgRoas.toFixed(2)}x</p>
+              </CardContent>
+            </Card>
+            <Card className="glass-card border-border">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">Impressões</p>
+                <p className="text-xl font-bold font-mono text-foreground">{campaigns.reduce((a, c) => a + c.impressions, 0).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+            <Card className="glass-card border-border">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">Cliques</p>
+                <p className="text-xl font-bold font-mono text-foreground">{campaigns.reduce((a, c) => a + c.clicks, 0).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+            <Card className="glass-card border-border">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">CTR Médio</p>
+                <p className="text-xl font-bold font-mono text-foreground">{(campaigns.reduce((a, c) => a + c.ctr, 0) / campaigns.length).toFixed(2)}%</p>
+              </CardContent>
+            </Card>
+            <Card className="glass-card border-border">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">CPC Médio</p>
+                <p className="text-xl font-bold font-mono text-foreground">R$ {(campaigns.reduce((a, c) => a + c.cpc, 0) / campaigns.length).toFixed(2)}</p>
+              </CardContent>
+            </Card>
+            <Card className="glass-card border-border">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">CPM Médio</p>
+                <p className="text-xl font-bold font-mono text-foreground">R$ {(campaigns.reduce((a, c) => a + c.cpm, 0) / campaigns.length).toFixed(2)}</p>
+              </CardContent>
+            </Card>
+          </div>
+        </>
       )}
 
       {/* Campaigns table */}
