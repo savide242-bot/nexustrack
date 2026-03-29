@@ -166,21 +166,41 @@ export default function Campaigns() {
     return () => { supabase.removeChannel(channel); };
   }, [user, loadSales]);
 
+  // Detect iframe
+  const isInIframe = (() => {
+    try { return window.self !== window.top; } catch { return true; }
+  })();
+
   // Facebook Login
   const handleFbLogin = () => {
+    if (isInIframe) {
+      toast({
+        title: "Abra na URL publicada",
+        description: "O login Facebook não funciona no preview. Acesse nexustrack.lovable.app para conectar.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!sdkLoaded) {
       toast({ title: "Facebook SDK a carregar...", description: "Tenta novamente em alguns segundos" });
       return;
     }
     setFbLoading(true);
 
-    (window as any).FB.login(
-      async (response: any) => {
-        if (response.status !== "connected" || !response.authResponse?.accessToken) {
-          setFbLoading(false);
-          toast({ title: "Login cancelado", variant: "destructive" });
-          return;
-        }
+    // Fallback timeout in case popup is silently blocked
+    const fallbackTimer = setTimeout(() => {
+      setFbLoading(false);
+    }, 30000);
+
+    try {
+      (window as any).FB.login(
+        async (response: any) => {
+          clearTimeout(fallbackTimer);
+          if (response.status !== "connected" || !response.authResponse?.accessToken) {
+            setFbLoading(false);
+            toast({ title: "Login cancelado", variant: "destructive" });
+            return;
+          }
 
         try {
           const shortToken = response.authResponse.accessToken;
