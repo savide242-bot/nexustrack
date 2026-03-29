@@ -502,7 +502,7 @@ export default function Campaigns() {
                     const tip = getCountryTooltip(geo);
                     return (
                       <Geography
-                        key={geo.rsSVGPath || geo.id}
+                        key={geo.rsmKey || geo.id}
                         geography={geo}
                         fill={getCountryFill(geo)}
                         stroke="hsl(var(--border))"
