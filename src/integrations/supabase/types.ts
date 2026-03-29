@@ -18,6 +18,8 @@ export type Database = {
         Row: {
           created_at: string
           domain: string | null
+          fb_access_token: string | null
+          fb_ad_account_id: string | null
           google_ads_id: string | null
           hotmart_token: string | null
           id: string
@@ -33,6 +35,8 @@ export type Database = {
         Insert: {
           created_at?: string
           domain?: string | null
+          fb_access_token?: string | null
+          fb_ad_account_id?: string | null
           google_ads_id?: string | null
           hotmart_token?: string | null
           id?: string
@@ -48,6 +52,8 @@ export type Database = {
         Update: {
           created_at?: string
           domain?: string | null
+          fb_access_token?: string | null
+          fb_ad_account_id?: string | null
           google_ads_id?: string | null
           hotmart_token?: string | null
           id?: string
@@ -61,6 +67,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      capi_events_log: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          event_id: string
+          event_name: string
+          id: string
+          payload: Json | null
+          response: Json | null
+          status: string | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          event_id: string
+          event_name: string
+          id?: string
+          payload?: Json | null
+          response?: Json | null
+          status?: string | null
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          event_id?: string
+          event_name?: string
+          id?: string
+          payload?: Json | null
+          response?: Json | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "capi_events_log_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cta_clicks: {
         Row: {
@@ -233,6 +280,41 @@ export type Database = {
             columns: ["sale_id"]
             isOneToOne: false
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pages: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          id: string
+          name: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pages_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
             referencedColumns: ["id"]
           },
         ]

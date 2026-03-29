@@ -1,4 +1,4 @@
-import { BarChart3, Megaphone, ShoppingCart, Users, Settings, Plug, Bell, LogOut, Zap } from "lucide-react";
+import { BarChart3, Megaphone, ShoppingCart, Users, Settings, Plug, Bell, LogOut, Zap, FileText, Radar } from "lucide-react";
 import { useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -16,8 +16,10 @@ import {
 const navItems = [
   { title: "Dashboard", icon: BarChart3, href: "/" },
   { title: "Campanhas", icon: Megaphone, href: "/campaigns" },
+  { title: "Páginas", icon: FileText, href: "/pages" },
   { title: "Vendas", icon: ShoppingCart, href: "/sales" },
   { title: "Leads", icon: Users, href: "/leads" },
+  { title: "Tracking CAPI", icon: Radar, href: "/tracking" },
   { title: "Integrações", icon: Plug, href: "/integrations" },
   { title: "Notificações", icon: Bell, href: "/notifications" },
   { title: "Configurações", icon: Settings, href: "/settings" },

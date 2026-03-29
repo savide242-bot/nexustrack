@@ -12,8 +12,10 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Index from "./pages/Index";
 import Campaigns from "./pages/Campaigns";
+import Pages from "./pages/Pages";
 import Sales from "./pages/Sales";
 import Leads from "./pages/Leads";
+import Tracking from "./pages/Tracking";
 import Integrations from "./pages/Integrations";
 import Notifications from "./pages/Notifications";
 import SettingsPage from "./pages/SettingsPage";
@@ -36,8 +38,10 @@ const App = () => (
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/" element={<Index />} />
               <Route path="/campaigns" element={<Campaigns />} />
+              <Route path="/pages" element={<Pages />} />
               <Route path="/sales" element={<Sales />} />
               <Route path="/leads" element={<Leads />} />
+              <Route path="/tracking" element={<Tracking />} />
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/settings" element={<SettingsPage />} />
