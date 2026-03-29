@@ -9,10 +9,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { campaign_id, lead_id, button_id, button_text, page_url } = await req.json();
+    const { campaign_id, page_id, lead_id, button_id, button_text, page_url } = await req.json();
 
-    if (!campaign_id) {
-      return new Response(JSON.stringify({ error: "campaign_id required" }), { status: 400, headers: corsHeaders });
+    if (!campaign_id && !page_id) {
+      return new Response(JSON.stringify({ error: "campaign_id or page_id required" }), { status: 400, headers: corsHeaders });
     }
 
     const supabase = createClient(
@@ -21,7 +21,10 @@ Deno.serve(async (req) => {
     );
 
     const { error } = await supabase.from("cta_clicks").insert({
-      campaign_id, lead_id: lead_id || null, button_id, button_text, page_url,
+      campaign_id: campaign_id || null,
+      page_id: page_id || null,
+      lead_id: lead_id || null,
+      button_id, button_text, page_url,
     });
 
     if (error) throw error;

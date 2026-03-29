@@ -10,12 +10,12 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { campaign_id, page_url, fingerprint, ip_address, user_agent, referrer,
+    const { campaign_id, page_id, page_url, fingerprint, ip_address, user_agent, referrer,
       utm_source, utm_medium, utm_campaign, utm_content, utm_term,
       fbc, fbp, email, phone, name, city, state, country, zip_code } = body;
 
-    if (!campaign_id) {
-      return new Response(JSON.stringify({ error: "campaign_id required" }), { status: 400, headers: corsHeaders });
+    if (!campaign_id && !page_id) {
+      return new Response(JSON.stringify({ error: "campaign_id or page_id required" }), { status: 400, headers: corsHeaders });
     }
 
     const supabase = createClient(
@@ -24,7 +24,9 @@ Deno.serve(async (req) => {
     );
 
     const { data, error } = await supabase.from("leads_clicks").insert({
-      campaign_id, page_url, fingerprint, ip_address, user_agent, referrer,
+      campaign_id: campaign_id || null,
+      page_id: page_id || null,
+      page_url, fingerprint, ip_address, user_agent, referrer,
       utm_source, utm_medium, utm_campaign, utm_content, utm_term,
       fbc, fbp, email, phone, name, city, state, country, zip_code,
     }).select("id").single();

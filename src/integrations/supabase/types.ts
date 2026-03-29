@@ -78,6 +78,7 @@ export type Database = {
           payload: Json | null
           response: Json | null
           status: string | null
+          user_id: string | null
         }
         Insert: {
           campaign_id?: string | null
@@ -88,6 +89,7 @@ export type Database = {
           payload?: Json | null
           response?: Json | null
           status?: string | null
+          user_id?: string | null
         }
         Update: {
           campaign_id?: string | null
@@ -98,6 +100,7 @@ export type Database = {
           payload?: Json | null
           response?: Json | null
           status?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -113,31 +116,34 @@ export type Database = {
         Row: {
           button_id: string | null
           button_text: string | null
-          campaign_id: string
+          campaign_id: string | null
           converted: boolean | null
           created_at: string
           id: string
           lead_id: string | null
+          page_id: string | null
           page_url: string | null
         }
         Insert: {
           button_id?: string | null
           button_text?: string | null
-          campaign_id: string
+          campaign_id?: string | null
           converted?: boolean | null
           created_at?: string
           id?: string
           lead_id?: string | null
+          page_id?: string | null
           page_url?: string | null
         }
         Update: {
           button_id?: string | null
           button_text?: string | null
-          campaign_id?: string
+          campaign_id?: string | null
           converted?: boolean | null
           created_at?: string
           id?: string
           lead_id?: string | null
+          page_id?: string | null
           page_url?: string | null
         }
         Relationships: [
@@ -159,7 +165,7 @@ export type Database = {
       }
       leads_clicks: {
         Row: {
-          campaign_id: string
+          campaign_id: string | null
           city: string | null
           country: string | null
           created_at: string
@@ -171,6 +177,7 @@ export type Database = {
           ip_address: string | null
           lead_score: number | null
           name: string | null
+          page_id: string | null
           page_url: string | null
           phone: string | null
           referrer: string | null
@@ -185,7 +192,7 @@ export type Database = {
           zip_code: string | null
         }
         Insert: {
-          campaign_id: string
+          campaign_id?: string | null
           city?: string | null
           country?: string | null
           created_at?: string
@@ -197,6 +204,7 @@ export type Database = {
           ip_address?: string | null
           lead_score?: number | null
           name?: string | null
+          page_id?: string | null
           page_url?: string | null
           phone?: string | null
           referrer?: string | null
@@ -211,7 +219,7 @@ export type Database = {
           zip_code?: string | null
         }
         Update: {
-          campaign_id?: string
+          campaign_id?: string | null
           city?: string | null
           country?: string | null
           created_at?: string
@@ -223,6 +231,7 @@ export type Database = {
           ip_address?: string | null
           lead_score?: number | null
           name?: string | null
+          page_id?: string | null
           page_url?: string | null
           phone?: string | null
           referrer?: string | null
@@ -324,7 +333,10 @@ export type Database = {
           company: string | null
           created_at: string
           full_name: string | null
+          hotmart_token: string | null
           id: string
+          meta_access_token: string | null
+          meta_pixel_id: string | null
           updated_at: string
           user_id: string
         }
@@ -332,7 +344,10 @@ export type Database = {
           company?: string | null
           created_at?: string
           full_name?: string | null
+          hotmart_token?: string | null
           id?: string
+          meta_access_token?: string | null
+          meta_pixel_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -340,7 +355,10 @@ export type Database = {
           company?: string | null
           created_at?: string
           full_name?: string | null
+          hotmart_token?: string | null
           id?: string
+          meta_access_token?: string | null
+          meta_pixel_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -391,6 +409,7 @@ export type Database = {
           product_name: string | null
           status: string
           transaction_id: string | null
+          user_id: string | null
         }
         Insert: {
           amount_mzn?: number | null
@@ -409,6 +428,7 @@ export type Database = {
           product_name?: string | null
           status?: string
           transaction_id?: string | null
+          user_id?: string | null
         }
         Update: {
           amount_mzn?: number | null
@@ -427,6 +447,7 @@ export type Database = {
           product_name?: string | null
           status?: string
           transaction_id?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
