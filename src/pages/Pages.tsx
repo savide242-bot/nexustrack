@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -25,62 +24,49 @@ export default function Pages() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [pages, setPages] = useState<Page[]>([]);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
-  const [campaignId, setCampaignId] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // Metrics per page
   const [pageMetrics, setPageMetrics] = useState<Record<string, { visitors: number; clicks: number; topCtas: any[] }>>({});
 
   useEffect(() => {
     if (!user) return;
     fetchPages();
-    fetchCampaigns();
   }, [user]);
 
   const fetchPages = async () => {
     const { data } = await supabase.from("pages").select("*").order("created_at", { ascending: false });
     if (data) {
       setPages(data as Page[]);
-      // Fetch metrics for each page
       for (const page of data) {
-        if (page.campaign_id) {
-          const [{ count: visitors }, { data: clicks }] = await Promise.all([
-            supabase.from("leads_clicks").select("*", { count: "exact", head: true }).eq("campaign_id", page.campaign_id).eq("page_url", page.url),
-            supabase.from("cta_clicks").select("button_id, button_text").eq("campaign_id", page.campaign_id).eq("page_url", page.url),
-          ]);
+        const [{ count: visitors }, { data: clicks }] = await Promise.all([
+          supabase.from("leads_clicks").select("*", { count: "exact", head: true }).eq("page_id" as any, page.id),
+          supabase.from("cta_clicks").select("button_id, button_text").eq("page_id" as any, page.id),
+        ]);
 
-          const ctaMap: Record<string, { text: string; count: number }> = {};
-          (clicks || []).forEach((c: any) => {
-            const key = c.button_id || c.button_text || "unknown";
-            if (!ctaMap[key]) ctaMap[key] = { text: c.button_text || key, count: 0 };
-            ctaMap[key].count++;
-          });
-          const topCtas = Object.values(ctaMap).sort((a, b) => b.count - a.count).slice(0, 5);
+        const ctaMap: Record<string, { text: string; count: number }> = {};
+        (clicks || []).forEach((c: any) => {
+          const key = c.button_id || c.button_text || "unknown";
+          if (!ctaMap[key]) ctaMap[key] = { text: c.button_text || key, count: 0 };
+          ctaMap[key].count++;
+        });
+        const topCtas = Object.values(ctaMap).sort((a, b) => b.count - a.count).slice(0, 5);
 
-          setPageMetrics(prev => ({
-            ...prev,
-            [page.id]: { visitors: visitors || 0, clicks: (clicks || []).length, topCtas }
-          }));
-        }
+        setPageMetrics(prev => ({
+          ...prev,
+          [page.id]: { visitors: visitors || 0, clicks: (clicks || []).length, topCtas }
+        }));
       }
     }
   };
 
-  const fetchCampaigns = async () => {
-    const { data } = await supabase.from("campaigns").select("id, name").order("created_at", { ascending: false });
-    if (data) setCampaigns(data);
-  };
-
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !name || !url || !campaignId) return;
+    if (!user || !name || !url) return;
     setLoading(true);
-    const { error } = await supabase.from("pages").insert({ user_id: user.id, campaign_id: campaignId, url, name });
+    const { error } = await supabase.from("pages").insert({ user_id: user.id, url, name });
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
     } else {
@@ -88,7 +74,6 @@ export default function Pages() {
       setOpen(false);
       setName("");
       setUrl("");
-      setCampaignId("");
       fetchPages();
     }
     setLoading(false);
@@ -99,7 +84,7 @@ export default function Pages() {
   const getScript = (page: Page) => {
     return `<script>
 (function(){
-  var cid="${page.campaign_id}";
+  var pid="${page.id}";
   var purl=encodeURIComponent(window.location.href);
   var params=new URLSearchParams(window.location.search);
   var fp=navigator.userAgent+screen.width+screen.height+new Date().getTimezoneOffset();
@@ -110,7 +95,7 @@ export default function Pages() {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      campaign_id:cid,page_url:purl,fingerprint:fingerprint,
+      page_id:pid,page_url:purl,fingerprint:fingerprint,
       ip_address:"",user_agent:navigator.userAgent,
       referrer:document.referrer,
       utm_source:params.get("utm_source")||"",
@@ -129,7 +114,7 @@ export default function Pages() {
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({
-            campaign_id:cid,lead_id:window.__nxLeadId,
+            page_id:pid,lead_id:window.__nxLeadId,
             button_id:el.id||"",button_text:el.innerText||"",page_url:purl
           })
         });
@@ -168,17 +153,6 @@ export default function Pages() {
               <div className="space-y-2">
                 <Label>URL</Label>
                 <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://minhapagina.com" required />
-              </div>
-              <div className="space-y-2">
-                <Label>Campanha</Label>
-                <Select value={campaignId} onValueChange={setCampaignId}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar campanha" /></SelectTrigger>
-                  <SelectContent>
-                    {campaigns.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
               <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
                 {loading ? "Adicionando..." : "Adicionar Página"}
