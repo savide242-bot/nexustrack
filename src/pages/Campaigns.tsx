@@ -166,21 +166,8 @@ export default function Campaigns() {
     return () => { supabase.removeChannel(channel); };
   }, [user, loadSales]);
 
-  // Detect iframe
-  const isInIframe = (() => {
-    try { return window.self !== window.top; } catch { return true; }
-  })();
-
   // Facebook Login
   const handleFbLogin = () => {
-    if (isInIframe) {
-      toast({
-        title: "Abra na URL publicada",
-        description: "O login Facebook não funciona no preview. Acesse nexustrack.lovable.app para conectar.",
-        variant: "destructive",
-      });
-      return;
-    }
     if (!sdkLoaded) {
       toast({ title: "Facebook SDK a carregar...", description: "Tenta novamente em alguns segundos" });
       return;

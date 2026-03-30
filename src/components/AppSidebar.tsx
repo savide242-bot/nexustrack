@@ -11,6 +11,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 const navItems = [
@@ -28,11 +29,16 @@ const navItems = [
 export function AppSidebar() {
   const location = useLocation();
   const { signOut } = useAuth();
+  const { setOpenMobile } = useSidebar();
+
+  const handleLinkClick = () => {
+    setOpenMobile(false);
+  };
 
   return (
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-border">
-        <Link to="/" className="flex items-center gap-2">
+        <Link to="/" className="flex items-center gap-2" onClick={handleLinkClick}>
           <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
             <Zap className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -52,7 +58,7 @@ export function AppSidebar() {
                     isActive={location.pathname === item.href}
                     tooltip={item.title}
                   >
-                    <Link to={item.href}>
+                    <Link to={item.href} onClick={handleLinkClick}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -66,7 +72,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-2 border-t border-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={signOut} tooltip="Sair">
+            <SidebarMenuButton onClick={() => { handleLinkClick(); signOut(); }} tooltip="Sair">
               <LogOut className="h-4 w-4" />
               <span>Sair</span>
             </SidebarMenuButton>
