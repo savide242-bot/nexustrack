@@ -15,6 +15,93 @@ function isValidUUID(val: unknown): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 }
 
+function classifySource(referrer: string, utmSource: string, utmMedium: string, utmContent: string): string {
+  const ref = referrer.toLowerCase();
+  const src = utmSource.toLowerCase();
+  const med = utmMedium.toLowerCase();
+  const cont = utmContent.toLowerCase();
+
+  // Instagram
+  if (ref.includes("instagram.com") || ref.includes("l.instagram.com") || src === "instagram" || src === "ig") {
+    if (cont.includes("story") || cont.includes("stories") || med === "story") return "Instagram — Story";
+    if (cont.includes("direct") || med === "direct") return "Instagram — Direct";
+    if (cont.includes("bio") || cont.includes("link_bio") || med === "bio") return "Instagram — Bio Link";
+    if (cont.includes("reel") || med === "reel") return "Instagram — Reels";
+    if (cont.includes("feed") || med === "feed") return "Instagram — Feed";
+    return "Instagram";
+  }
+
+  // Facebook
+  if (ref.includes("facebook.com") || ref.includes("fb.com") || ref.includes("lm.facebook") || ref.includes("m.facebook") || src === "facebook" || src === "fb") {
+    if (cont.includes("story") || med === "story") return "Facebook — Story";
+    if (cont.includes("feed") || med === "feed") return "Facebook — Feed";
+    if (cont.includes("messenger") || med === "messenger") return "Facebook — Messenger";
+    return "Facebook";
+  }
+
+  // Google
+  if (ref.includes("google.") || src === "google") {
+    if (med === "cpc" || med === "ppc") return "Google — Ads";
+    if (med === "organic") return "Google — Orgânico";
+    return "Google";
+  }
+
+  // TikTok
+  if (ref.includes("tiktok.com") || src === "tiktok") return "TikTok";
+
+  // YouTube
+  if (ref.includes("youtube.com") || ref.includes("youtu.be") || src === "youtube") return "YouTube";
+
+  // Twitter/X
+  if (ref.includes("twitter.com") || ref.includes("t.co") || ref.includes("x.com") || src === "twitter") return "Twitter/X";
+
+  // WhatsApp
+  if (ref.includes("whatsapp") || src === "whatsapp") return "WhatsApp";
+
+  // Telegram
+  if (ref.includes("telegram") || ref.includes("t.me") || src === "telegram") return "Telegram";
+
+  // If utm_source is set but not matched above
+  if (utmSource) return utmSource;
+
+  // Direct (no referrer)
+  if (!referrer) return "Direto";
+
+  return referrer.replace(/^https?:\/\//, "").split("/")[0];
+}
+
+async function resolveGeo(ip: string): Promise<{ country: string; city: string; state: string }> {
+  const fallback = { country: "", city: "", state: "" };
+  if (!ip || ip === "127.0.0.1" || ip === "::1") return fallback;
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,regionName,city`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    if (data.status !== "success") return fallback;
+    return {
+      country: data.countryCode || "",
+      city: data.city || "",
+      state: data.regionName || "",
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function extractIp(req: Request): string {
+  const headers = ["x-forwarded-for", "x-real-ip", "cf-connecting-ip", "x-client-ip"];
+  for (const h of headers) {
+    const val = req.headers.get(h);
+    if (val) {
+      const ip = val.split(",")[0].trim();
+      if (ip) return ip;
+    }
+  }
+  return "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -27,6 +114,20 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "campaign_id or page_id required" }), { status: 400, headers: corsHeaders });
     }
 
+    // Extract real IP from request headers
+    const ip = extractIp(req) || sanitize(body.ip_address, 45);
+
+    // Resolve geolocation server-side
+    const geo = await resolveGeo(ip);
+
+    const referrer = sanitize(body.referrer, 2000);
+    const utmSource = sanitize(body.utm_source, 200);
+    const utmMedium = sanitize(body.utm_medium, 200);
+    const utmContent = sanitize(body.utm_content, 200);
+
+    // Classify detailed source
+    const detailedSource = classifySource(referrer, utmSource, utmMedium, utmContent);
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -37,22 +138,22 @@ Deno.serve(async (req) => {
       page_id,
       page_url: sanitize(body.page_url, 2000),
       fingerprint: sanitize(body.fingerprint, 100),
-      ip_address: sanitize(body.ip_address, 45),
+      ip_address: ip,
       user_agent: sanitize(body.user_agent, 500),
-      referrer: sanitize(body.referrer, 2000),
-      utm_source: sanitize(body.utm_source, 200),
-      utm_medium: sanitize(body.utm_medium, 200),
+      referrer,
+      utm_source: detailedSource || utmSource,
+      utm_medium: utmMedium,
       utm_campaign: sanitize(body.utm_campaign, 200),
-      utm_content: sanitize(body.utm_content, 200),
+      utm_content: utmContent,
       utm_term: sanitize(body.utm_term, 200),
       fbc: sanitize(body.fbc, 200),
       fbp: sanitize(body.fbp, 200),
       email: sanitize(body.email, 320),
       phone: sanitize(body.phone, 30),
       name: sanitize(body.name, 200),
-      city: sanitize(body.city, 100),
-      state: sanitize(body.state, 100),
-      country: sanitize(body.country, 5),
+      city: geo.city || sanitize(body.city, 100),
+      state: geo.state || sanitize(body.state, 100),
+      country: geo.country || sanitize(body.country, 5),
       zip_code: sanitize(body.zip_code, 20),
     }).select("id").single();
 
