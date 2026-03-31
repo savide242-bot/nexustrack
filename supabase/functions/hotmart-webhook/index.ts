@@ -223,6 +223,7 @@ Deno.serve(async (req) => {
               pixel_id: pixelId,
               access_token: accessToken,
               event_name: "Purchase",
+              user_id: userId,
               event_data: {
                 email: buyerEmail,
                 phone: buyerPhone,

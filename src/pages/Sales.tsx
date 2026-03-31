@@ -1,20 +1,30 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ShoppingCart } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ShoppingCart, RotateCcw } from "lucide-react";
+import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
 
 export default function Sales() {
   const { user } = useAuth();
   const [sales, setSales] = useState<any[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
 
   useEffect(() => {
     if (!user) return;
+    const from = dateRange.from.toISOString();
+    const to = dateRange.to.toISOString();
+
     const fetchSales = async () => {
-      // Fetch sales with lead data for country/utm_source
-      const { data } = await supabase.from("sales").select("*, leads_clicks(country, city, utm_source)").order("created_at", { ascending: false });
+      const { data } = await supabase
+        .from("sales")
+        .select("*, leads_clicks(country, city, utm_source)")
+        .gte("created_at", from)
+        .lte("created_at", to)
+        .order("created_at", { ascending: false });
       if (data) setSales(data);
     };
     fetchSales();
@@ -25,7 +35,7 @@ export default function Sales() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user]);
+  }, [user, dateRange]);
 
   const statusColor = (s: string) => {
     if (s === "approved") return "bg-primary/20 text-primary";
@@ -33,64 +43,87 @@ export default function Sales() {
     return "bg-muted text-muted-foreground";
   };
 
+  const activeSales = sales.filter(s => s.status !== "refunded");
+  const refunds = sales.filter(s => s.status === "refunded");
+
+  const SalesTable = ({ data }: { data: any[] }) => (
+    data.length === 0 ? (
+      <Card className="glass-card border-border">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <ShoppingCart className="mb-4 h-12 w-12 text-muted-foreground" />
+          <p className="text-muted-foreground">Nenhum registo neste período</p>
+        </CardContent>
+      </Card>
+    ) : (
+      <Card className="glass-card border-border overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-border hover:bg-transparent">
+              <TableHead>Comprador</TableHead>
+              <TableHead>Produto</TableHead>
+              <TableHead>Original</TableHead>
+              <TableHead>MZN</TableHead>
+              <TableHead>País</TableHead>
+              <TableHead>Fonte</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Data</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map((s) => {
+              const lead = s.leads_clicks;
+              return (
+                <TableRow key={s.id} className="border-border">
+                  <TableCell>
+                    <div>
+                      <p className="font-medium">{s.buyer_name || "—"}</p>
+                      <p className="text-xs text-muted-foreground">{s.buyer_email || ""}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm">{s.product_name || "—"}</TableCell>
+                  <TableCell className="font-mono text-sm">{s.original_amount} {s.original_currency}</TableCell>
+                  <TableCell className="font-mono text-sm font-bold text-primary">{Number(s.amount_mzn)?.toLocaleString("pt-MZ")} MT</TableCell>
+                  <TableCell className="text-sm">{lead?.country || "—"}</TableCell>
+                  <TableCell className="text-sm">{lead?.utm_source || "—"}</TableCell>
+                  <TableCell><Badge className={statusColor(s.status)}>{s.status}</Badge></TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{new Date(s.created_at).toLocaleDateString("pt-MZ")}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Card>
+    )
+  );
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-bold">Vendas</h1>
-        <p className="text-muted-foreground">Todas as vendas com conversão automática para Meticais</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="font-display text-3xl font-bold">Vendas</h1>
+          <p className="text-muted-foreground">Todas as vendas com conversão automática para Meticais</p>
+        </div>
+        <DateFilter value={dateRange} onChange={setDateRange} />
       </div>
 
-      {sales.length === 0 ? (
-        <Card className="glass-card border-border">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <ShoppingCart className="mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">Nenhuma venda registrada ainda</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="glass-card border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead>Comprador</TableHead>
-                <TableHead>Produto</TableHead>
-                <TableHead>Original</TableHead>
-                <TableHead>MZN</TableHead>
-                <TableHead>Câmbio</TableHead>
-                <TableHead>País</TableHead>
-                <TableHead>Fonte</TableHead>
-                <TableHead>Plataforma</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Data</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sales.map((s) => {
-                const lead = s.leads_clicks;
-                return (
-                  <TableRow key={s.id} className="border-border">
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{s.buyer_name || "—"}</p>
-                        <p className="text-xs text-muted-foreground">{s.buyer_email || ""}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">{s.product_name || "—"}</TableCell>
-                    <TableCell className="font-mono text-sm">{s.original_amount} {s.original_currency}</TableCell>
-                    <TableCell className="font-mono text-sm font-bold text-primary">{s.amount_mzn?.toLocaleString("pt-MZ")} MT</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{s.exchange_rate?.toFixed(2)}</TableCell>
-                    <TableCell className="text-sm">{lead?.country || "—"}</TableCell>
-                    <TableCell className="text-sm">{lead?.utm_source || "—"}</TableCell>
-                    <TableCell><Badge variant="outline" className="border-border">{s.platform}</Badge></TableCell>
-                    <TableCell><Badge className={statusColor(s.status)}>{s.status}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{new Date(s.created_at).toLocaleDateString("pt-MZ")}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
+      <Tabs defaultValue="sales">
+        <TabsList className="bg-secondary border border-border">
+          <TabsTrigger value="sales" className="gap-1.5">
+            <ShoppingCart className="h-3.5 w-3.5" />
+            Vendas ({activeSales.length})
+          </TabsTrigger>
+          <TabsTrigger value="refunds" className="gap-1.5">
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reembolsos ({refunds.length})
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="sales" className="mt-4">
+          <SalesTable data={activeSales} />
+        </TabsContent>
+        <TabsContent value="refunds" className="mt-4">
+          <SalesTable data={refunds} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
