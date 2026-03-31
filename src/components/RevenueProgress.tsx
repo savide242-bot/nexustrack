@@ -27,7 +27,7 @@ export function RevenueProgress() {
     fetchRevenue();
 
     const channel = supabase
-      .channel("revenue-progress")
+      .channel("rev-progress-" + Date.now())
       .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => fetchRevenue())
       .subscribe();
 
