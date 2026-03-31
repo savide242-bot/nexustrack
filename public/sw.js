@@ -1,11 +1,25 @@
+// v2 — force update
+const CACHE_VERSION = "v2";
+
 // Install: skip waiting to activate immediately
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// Activate: claim all clients immediately for auto-updates
+// Activate: claim all clients + clear old caches
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+// Fetch: network-first for everything (no caching stale bundles)
+self.addEventListener("fetch", (event) => {
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
+  );
 });
 
 // Push notifications
