@@ -139,10 +139,11 @@ export default function Campaigns() {
 
   // Load sales for map + realtime
   const loadSales = useCallback(async () => {
-    const { data } = await supabase.from("sales").select("amount_mzn, leads_clicks(country)");
+    const { data } = await supabase.from("sales").select("amount_mzn, status, leads_clicks(country)");
     if (!data) return;
     const map: Record<string, { count: number; total: number }> = {};
     data.forEach((s: any) => {
+      if (s.status === "refunded" || Number(s.amount_mzn) <= 0) return;
       const country = s.leads_clicks?.country;
       if (!country) return;
       if (!map[country]) map[country] = { count: 0, total: 0 };

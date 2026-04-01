@@ -68,7 +68,7 @@ export default function Index() {
         });
         setDailySales(last7.map((date) => ({
           date: date.slice(5),
-          vendas: sales.filter((s) => s.created_at.startsWith(date) && s.status !== "refunded").reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0),
+          vendas: sales.filter((s) => s.created_at.startsWith(date) && s.status !== "refunded" && Number(s.amount_mzn) > 0).reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0),
         })));
       }
 
