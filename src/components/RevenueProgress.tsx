@@ -1,16 +1,20 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Progress } from "@/components/ui/progress";
 import { TrendingUp } from "lucide-react";
 
 const GOAL = 100_000;
+const createChannelId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function RevenueProgress() {
   const { user } = useAuth();
   const [revenue, setRevenue] = useState(0);
 
-  const fetchRevenue = async () => {
+  const fetchRevenue = useCallback(async () => {
     const { data } = await supabase
       .from("sales")
       .select("amount_mzn, status");
@@ -20,19 +24,27 @@ export function RevenueProgress() {
       return sum + (Number(s.amount_mzn) || 0);
     }, 0);
     setRevenue(Math.max(0, total));
-  };
+  }, []);
 
   useEffect(() => {
-    if (!user) return;
-    fetchRevenue();
+    if (!user) {
+      setRevenue(0);
+      return;
+    }
+
+    void fetchRevenue();
 
     const channel = supabase
-      .channel("rev-progress-" + Date.now())
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => fetchRevenue())
+      .channel(`revenue-progress-${createChannelId()}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => {
+        void fetchRevenue();
+      })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchRevenue, user]);
 
   const pct = Math.min((revenue / GOAL) * 100, 100);
   const formatted = revenue >= 1000 ? `${(revenue / 1000).toFixed(1)}K` : revenue.toLocaleString("pt-MZ");
