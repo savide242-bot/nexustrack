@@ -6,6 +6,8 @@ import { TrendingUp } from "lucide-react";
 
 const GOAL = 100_000;
 const LEGACY_OFFSET = 59_157;
+/** Only sales created after this cutoff are added on top of the legacy offset */
+const CUTOFF = "2026-04-01T00:00:00+02:00";
 const createChannelId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -18,13 +20,14 @@ export function RevenueProgress() {
   const fetchRevenue = useCallback(async () => {
     const { data } = await supabase
       .from("sales")
-      .select("amount_mzn, status");
+      .select("amount_mzn, status, created_at")
+      .gte("created_at", CUTOFF);
     if (!data) return;
     const total = data.reduce((sum, s: any) => {
       if (s.status === "refunded") return sum - (Number(s.amount_mzn) || 0);
       return sum + (Number(s.amount_mzn) || 0);
     }, 0);
-    setRevenue(Math.max(0, total) + LEGACY_OFFSET);
+    setRevenue(LEGACY_OFFSET + Math.max(0, total));
   }, []);
 
   useEffect(() => {
