@@ -57,9 +57,9 @@ export default function Index() {
         .order("created_at", { ascending: false });
 
       if (sales) {
-        const nonRefunded = sales.filter(s => s.status !== "refunded");
-        setTotalSales(nonRefunded.length);
-        setTotalMzn(nonRefunded.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0));
+        const paid = sales.filter(s => s.status !== "refunded" && Number(s.amount_mzn) > 0);
+        setTotalSales(paid.length);
+        setTotalMzn(paid.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0));
 
         const last7 = Array.from({ length: 7 }, (_, i) => {
           const d = new Date();
@@ -68,7 +68,7 @@ export default function Index() {
         });
         setDailySales(last7.map((date) => ({
           date: date.slice(5),
-          vendas: sales.filter((s) => s.created_at.startsWith(date) && s.status !== "refunded").reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0),
+          vendas: sales.filter((s) => s.created_at.startsWith(date) && s.status !== "refunded" && Number(s.amount_mzn) > 0).reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0),
         })));
       }
 

@@ -43,8 +43,8 @@ export default function Sales() {
     return "bg-muted text-muted-foreground";
   };
 
-  const activeSales = sales.filter(s => s.status !== "refunded");
-  const refunds = sales.filter(s => s.status === "refunded");
+  const activeSales = sales.filter(s => s.status !== "refunded" && Number(s.amount_mzn) > 0);
+  const refunds = sales.filter(s => s.status === "refunded" || Number(s.amount_mzn) <= 0);
 
   const SalesTable = ({ data }: { data: any[] }) => (
     data.length === 0 ? (

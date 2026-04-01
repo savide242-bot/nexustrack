@@ -24,8 +24,10 @@ export function RevenueProgress() {
       .gte("created_at", CUTOFF);
     if (!data) return;
     const total = data.reduce((sum, s: any) => {
-      if (s.status === "refunded") return sum - (Number(s.amount_mzn) || 0);
-      return sum + (Number(s.amount_mzn) || 0);
+      const amt = Number(s.amount_mzn) || 0;
+      if (amt <= 0) return sum;
+      if (s.status === "refunded") return sum - amt;
+      return sum + amt;
     }, 0);
     setRevenue(LEGACY_OFFSET + Math.max(0, total));
   }, []);
