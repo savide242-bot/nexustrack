@@ -510,47 +510,102 @@ export default function Campaigns() {
       {/* === MAPA DE VENDAS (sempre visível) === */}
       <Card className="glass-card border-border">
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Globe className="h-5 w-5 text-primary" />
-            <CardTitle className="font-display">Mapa de Vendas</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              <CardTitle className="font-display">Mapa de Vendas</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setMapPosition(p => ({ ...p, zoom: Math.min(p.zoom * 1.5, 8) }))}
+              >
+                <span className="text-lg leading-none">+</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setMapPosition(p => ({ ...p, zoom: Math.max(p.zoom / 1.5, 1) }))}
+              >
+                <span className="text-lg leading-none">−</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => setMapPosition({ coordinates: [0, 0], zoom: 1 })}
+              >
+                Reset
+              </Button>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">Países acendem quando recebem vendas — em tempo real</p>
+          <p className="text-sm text-muted-foreground">Arraste para mover · Scroll ou botões para zoom · Passe o rato para ver detalhes</p>
         </CardHeader>
         <CardContent>
-          <div className="w-full rounded-lg overflow-hidden bg-background/50">
+          <div className="relative w-full rounded-lg overflow-hidden bg-background/50">
+            {hoveredCountry && (
+              <div
+                className="pointer-events-none absolute z-10 rounded-lg bg-popover px-3 py-2 text-sm shadow-lg border border-border"
+                style={{ left: tooltipPos.x, top: tooltipPos.y, transform: "translate(-50%, -120%)" }}
+              >
+                <p className="font-semibold text-foreground">{hoveredCountry}</p>
+              </div>
+            )}
             <ComposableMap
               projectionConfig={{ scale: 147 }}
               style={{ width: "100%", height: "auto" }}
             >
-              <Geographies geography={GEO_URL}>
-                {({ geographies }) =>
-                  geographies.map((geo) => {
-                    const tip = getCountryTooltip(geo);
-                    return (
-                      <Geography
-                        key={geo.rsmKey || geo.id}
-                        geography={geo}
-                        fill={getCountryFill(geo)}
-                        stroke="hsl(var(--border))"
-                        strokeWidth={0.4}
-                        style={{
-                          default: { outline: "none" },
-                          hover: {
-                            fill: tip ? "hsl(150 90% 40%)" : "hsl(var(--muted) / 0.5)",
-                            outline: "none",
-                            cursor: tip ? "pointer" : "default",
-                          },
-                          pressed: { outline: "none" },
-                        }}
-                      />
-                    );
-                  })
-                }
-              </Geographies>
+              <ZoomableGroup
+                zoom={mapPosition.zoom}
+                center={mapPosition.coordinates}
+                onMoveEnd={(pos) => setMapPosition(pos)}
+              >
+                <Geographies geography={GEO_URL}>
+                  {({ geographies }) =>
+                    geographies.map((geo) => {
+                      const tip = getCountryTooltip(geo);
+                      const countryName = geo.properties?.name || geo.properties?.NAME || "";
+                      return (
+                        <Geography
+                          key={geo.rsmKey || geo.id}
+                          geography={geo}
+                          fill={getCountryFill(geo)}
+                          stroke="hsl(var(--border))"
+                          strokeWidth={0.4}
+                          onMouseEnter={(e) => {
+                            const label = tip
+                              ? `${countryName} — ${tip.split(": ").slice(1).join(": ")}`
+                              : countryName;
+                            setHoveredCountry(label);
+                            const rect = (e.target as SVGElement).closest("svg")?.getBoundingClientRect();
+                            if (rect) setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                          }}
+                          onMouseMove={(e) => {
+                            const rect = (e.target as SVGElement).closest("svg")?.getBoundingClientRect();
+                            if (rect) setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                          }}
+                          onMouseLeave={() => setHoveredCountry(null)}
+                          style={{
+                            default: { outline: "none" },
+                            hover: {
+                              fill: tip ? "hsl(150 90% 40%)" : "hsl(var(--muted) / 0.5)",
+                              outline: "none",
+                              cursor: "grab",
+                            },
+                            pressed: { outline: "none" },
+                          }}
+                        />
+                      );
+                    })
+                  }
+                </Geographies>
+              </ZoomableGroup>
             </ComposableMap>
           </div>
 
-          {/* Country breakdown */}
           {Object.keys(salesByCountry).length > 0 && (
             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {Object.entries(salesByCountry)
