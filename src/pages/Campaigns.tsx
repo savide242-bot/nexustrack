@@ -11,6 +11,7 @@ import {
   ComposableMap,
   Geographies,
   Geography,
+  ZoomableGroup,
 } from "react-simple-maps";
 import {
   Select,
