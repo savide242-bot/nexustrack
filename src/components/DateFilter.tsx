@@ -53,6 +53,7 @@ export function DateFilter({ value, onChange, className }: DateFilterProps) {
           <SelectItem value="this_month">Este Mês</SelectItem>
           <SelectItem value="last_month">Mês Passado</SelectItem>
           <SelectItem value="custom">Personalizado</SelectItem>
+          <SelectItem value="all_time">Máximo</SelectItem>
         </SelectContent>
       </Select>
 

@@ -24,7 +24,7 @@ export function RevenueProgress() {
       if (s.status === "refunded") return sum - (Number(s.amount_mzn) || 0);
       return sum + (Number(s.amount_mzn) || 0);
     }, 0);
-    setRevenue(Math.max(0, total));
+    setRevenue(Math.max(0, total) + LEGACY_OFFSET);
   }, []);
 
   useEffect(() => {
