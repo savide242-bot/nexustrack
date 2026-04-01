@@ -20,13 +20,14 @@ export function RevenueProgress() {
   const fetchRevenue = useCallback(async () => {
     const { data } = await supabase
       .from("sales")
-      .select("amount_mzn, status");
+      .select("amount_mzn, status, created_at")
+      .gte("created_at", CUTOFF);
     if (!data) return;
     const total = data.reduce((sum, s: any) => {
       if (s.status === "refunded") return sum - (Number(s.amount_mzn) || 0);
       return sum + (Number(s.amount_mzn) || 0);
     }, 0);
-    setRevenue(Math.max(0, total) + LEGACY_OFFSET);
+    setRevenue(LEGACY_OFFSET + Math.max(0, total));
   }, []);
 
   useEffect(() => {
