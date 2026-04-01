@@ -86,6 +86,9 @@ export default function Campaigns() {
 
   // Map state
   const [salesByCountry, setSalesByCountry] = useState<Record<string, { count: number; total: number }>>({});
+  const [mapPosition, setMapPosition] = useState<{ coordinates: [number, number]; zoom: number }>({ coordinates: [0, 0], zoom: 1 });
+  const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Load FB App ID from edge function
   useEffect(() => {
