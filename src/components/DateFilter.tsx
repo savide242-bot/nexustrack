@@ -18,6 +18,7 @@ const presets: Record<string, () => DateRange> = {
     const d = subMonths(new Date(), 1);
     return { from: startOfMonth(d), to: endOfMonth(d) };
   },
+  all_time: () => ({ from: new Date("2020-01-01"), to: endOfDay(new Date()) }),
 };
 
 interface DateFilterProps {
@@ -52,6 +53,7 @@ export function DateFilter({ value, onChange, className }: DateFilterProps) {
           <SelectItem value="this_month">Este Mês</SelectItem>
           <SelectItem value="last_month">Mês Passado</SelectItem>
           <SelectItem value="custom">Personalizado</SelectItem>
+          <SelectItem value="all_time">Máximo</SelectItem>
         </SelectContent>
       </Select>
 

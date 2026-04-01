@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { TrendingUp } from "lucide-react";
 
 const GOAL = 100_000;
+const LEGACY_OFFSET = 59_157;
 const createChannelId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -23,7 +24,7 @@ export function RevenueProgress() {
       if (s.status === "refunded") return sum - (Number(s.amount_mzn) || 0);
       return sum + (Number(s.amount_mzn) || 0);
     }, 0);
-    setRevenue(Math.max(0, total));
+    setRevenue(Math.max(0, total) + LEGACY_OFFSET);
   }, []);
 
   useEffect(() => {
