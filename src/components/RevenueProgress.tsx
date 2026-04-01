@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { TrendingUp } from "lucide-react";
 
 const GOAL = 100_000;
+const LEGACY_OFFSET = 59_157;
 const createChannelId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()

@@ -18,6 +18,7 @@ const presets: Record<string, () => DateRange> = {
     const d = subMonths(new Date(), 1);
     return { from: startOfMonth(d), to: endOfMonth(d) };
   },
+  all_time: () => ({ from: new Date("2020-01-01"), to: endOfDay(new Date()) }),
 };
 
 interface DateFilterProps {
