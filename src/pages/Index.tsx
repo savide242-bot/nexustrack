@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, ShoppingCart, TrendingUp, Users, Target, BarChart3 } from "lucide-react";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid } from "recharts";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
 
 interface MetricCardProps {
@@ -32,7 +32,48 @@ function MetricCard({ title, value, icon: Icon, change }: MetricCardProps) {
   );
 }
 
-const COLORS = ["hsl(150,100%,50%)", "hsl(200,80%,50%)", "hsl(280,80%,60%)", "hsl(40,90%,50%)", "hsl(0,80%,55%)"];
+const SOURCE_COLORS = [
+  "hsl(150,100%,50%)",
+  "hsl(200,80%,50%)",
+  "hsl(280,80%,60%)",
+  "hsl(40,90%,50%)",
+  "hsl(0,80%,55%)",
+  "hsl(170,70%,45%)",
+  "hsl(320,70%,55%)",
+  "hsl(60,80%,50%)",
+];
+
+function MiniDonut({ percent, color, size = 36 }: { percent: number; color: string; size?: number }) {
+  const r = (size - 6) / 2;
+  const circ = 2 * Math.PI * r;
+  const filled = circ * (percent / 100);
+  return (
+    <svg width={size} height={size} className="flex-shrink-0">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(0,0%,18%)" strokeWidth={4} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke={color} strokeWidth={4}
+        strokeDasharray={`${filled} ${circ - filled}`}
+        strokeDashoffset={circ / 4}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SourceRow({ name, count, total, color }: { name: string; count: number; total: number; color: string }) {
+  const pct = total > 0 ? (count / total) * 100 : 0;
+  return (
+    <div className="flex items-center gap-3 py-2 px-1 rounded-lg hover:bg-secondary/30 transition-colors">
+      <MiniDonut percent={pct} color={color} />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-foreground truncate">{name}</p>
+        <p className="text-xs text-muted-foreground">{count} visitas</p>
+      </div>
+      <span className="text-sm font-bold text-foreground tabular-nums">{pct.toFixed(0)}%</span>
+    </div>
+  );
+}
 
 export default function Index() {
   const { user } = useAuth();
@@ -40,7 +81,7 @@ export default function Index() {
   const [totalMzn, setTotalMzn] = useState(0);
   const [totalSales, setTotalSales] = useState(0);
   const [totalLeads, setTotalLeads] = useState(0);
-  const [utmSources, setUtmSources] = useState<any[]>([]);
+  const [utmSources, setUtmSources] = useState<{ name: string; value: number }[]>([]);
   const [dailySales, setDailySales] = useState<any[]>([]);
 
   useEffect(() => {
@@ -91,7 +132,11 @@ export default function Index() {
           const src = l.utm_source || "Direto";
           sourceMap[src] = (sourceMap[src] || 0) + 1;
         });
-        setUtmSources(Object.entries(sourceMap).map(([name, value]) => ({ name, value })));
+        setUtmSources(
+          Object.entries(sourceMap)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+        );
       }
     };
 
@@ -107,6 +152,7 @@ export default function Index() {
 
   const conversionRate = totalLeads > 0 ? ((totalSales / totalLeads) * 100).toFixed(1) : "0";
   const avgTicket = totalSales > 0 ? (totalMzn / totalSales).toFixed(0) : "0";
+  const totalVisits = utmSources.reduce((s, u) => s + u.value, 0);
 
   return (
     <div className="space-y-6">
@@ -152,18 +198,19 @@ export default function Index() {
             <CardTitle className="font-display text-lg">Origem do Tráfego</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-64">
+            <div className="h-64 overflow-y-auto">
               {utmSources.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={utmSources} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                      {utmSources.map((_, i) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: "hsl(0,0%,9%)", border: "1px solid hsl(0,0%,18%)", borderRadius: 8 }} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="space-y-1">
+                  {utmSources.map((src, i) => (
+                    <SourceRow
+                      key={src.name}
+                      name={src.name}
+                      count={src.value}
+                      total={totalVisits}
+                      color={SOURCE_COLORS[i % SOURCE_COLORS.length]}
+                    />
+                  ))}
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
                   Sem dados de UTM ainda

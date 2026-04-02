@@ -30,11 +30,18 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md glass-card border-border">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4 overflow-hidden">
+      {/* Animated background orbs */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/10 blur-[120px] animate-[pulse_6s_ease-in-out_infinite]" />
+        <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-primary/8 blur-[100px] animate-[pulse_8s_ease-in-out_infinite_1s]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-64 w-64 rounded-full bg-primary/5 blur-[80px] animate-[pulse_5s_ease-in-out_infinite_2s]" />
+      </div>
+
+      <Card className="relative w-full max-w-md glass-card border-border animate-fade-in backdrop-blur-xl">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl gradient-primary">
-            <Zap className="h-7 w-7 text-primary-foreground" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl gradient-primary shadow-[0_0_30px_hsl(150_100%_50%/0.4)] animate-[pulse_3s_ease-in-out_infinite]">
+            <Zap className="h-8 w-8 text-primary-foreground" />
           </div>
           <CardTitle className="font-display text-2xl">
             Nexus<span className="neon-text">Track</span> Pro
@@ -52,6 +59,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="transition-shadow duration-300 focus:shadow-[0_0_15px_hsl(150_100%_50%/0.2)]"
               />
             </div>
             <div className="space-y-2">
@@ -64,11 +72,12 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  className="transition-shadow duration-300 focus:shadow-[0_0_15px_hsl(150_100%_50%/0.2)]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -79,7 +88,11 @@ export default function Login() {
                 Esqueceu a senha?
               </Link>
             </div>
-            <Button type="submit" className="w-full gradient-primary text-primary-foreground font-semibold" disabled={loading}>
+            <Button
+              type="submit"
+              className="w-full gradient-primary text-primary-foreground font-semibold transition-transform duration-200 hover:scale-[1.02] active:scale-95"
+              disabled={loading}
+            >
               {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>

@@ -23,17 +23,19 @@ function classifySource(referrer: string, utmSource: string, utmMedium: string, 
 
   // Instagram
   if (ref.includes("instagram.com") || ref.includes("l.instagram.com") || src === "instagram" || src === "ig") {
-    if (cont.includes("story") || cont.includes("stories") || med === "story") return "Instagram — Story";
+    if (cont.includes("story") || cont.includes("stories") || med === "story" || med === "stories") return "Instagram — Story";
     if (cont.includes("direct") || med === "direct") return "Instagram — Direct";
-    if (cont.includes("bio") || cont.includes("link_bio") || med === "bio") return "Instagram — Bio Link";
-    if (cont.includes("reel") || med === "reel") return "Instagram — Reels";
+    if (cont.includes("bio") || cont.includes("link_bio") || med === "bio" || med === "linkinbio") return "Instagram — Bio Link";
+    if (cont.includes("reel") || med === "reel" || med === "reels") return "Instagram — Reels";
     if (cont.includes("feed") || med === "feed") return "Instagram — Feed";
+    // Check for igshid parameter in referrer (Instagram-specific)
+    if (ref.includes("igshid=") || ref.includes("igsh=")) return "Instagram";
     return "Instagram";
   }
 
   // Facebook
   if (ref.includes("facebook.com") || ref.includes("fb.com") || ref.includes("lm.facebook") || ref.includes("m.facebook") || src === "facebook" || src === "fb") {
-    if (cont.includes("story") || med === "story") return "Facebook — Story";
+    if (cont.includes("story") || med === "story" || med === "stories") return "Facebook — Story";
     if (cont.includes("feed") || med === "feed") return "Facebook — Feed";
     if (cont.includes("messenger") || med === "messenger") return "Facebook — Messenger";
     return "Facebook";
@@ -114,10 +116,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "campaign_id or page_id required" }), { status: 400, headers: corsHeaders });
     }
 
-    // Extract real IP from request headers
     const ip = extractIp(req) || sanitize(body.ip_address, 45);
-
-    // Resolve geolocation server-side
     const geo = await resolveGeo(ip);
 
     const referrer = sanitize(body.referrer, 2000);
@@ -125,7 +124,6 @@ Deno.serve(async (req) => {
     const utmMedium = sanitize(body.utm_medium, 200);
     const utmContent = sanitize(body.utm_content, 200);
 
-    // Classify detailed source
     const detailedSource = classifySource(referrer, utmSource, utmMedium, utmContent);
 
     const supabase = createClient(
