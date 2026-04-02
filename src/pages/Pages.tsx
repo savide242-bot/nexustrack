@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FileText, Plus, Copy, Check, MousePointerClick, Eye, BarChart3, Globe, TrendingUp, Link, ShoppingCart, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
 
 interface Page {
   id: string;
@@ -40,14 +41,18 @@ export default function Pages() {
   const [loading, setLoading] = useState(false);
   const [pageMetrics, setPageMetrics] = useState<Record<string, PageMetrics>>({});
   const [dataLoading, setDataLoading] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
 
   useEffect(() => {
     if (!user) return;
     fetchPages();
-  }, [user]);
+  }, [user, dateRange]);
 
   const fetchPages = useCallback(async () => {
     setDataLoading(true);
+    const from = dateRange.from.toISOString();
+    const to = dateRange.to.toISOString();
+
     const { data: pagesData } = await supabase.from("pages").select("*").order("created_at", { ascending: false });
     if (!pagesData) { setDataLoading(false); return; }
     setPages(pagesData as Page[]);
@@ -55,10 +60,9 @@ export default function Pages() {
     const pageIds = pagesData.map(p => p.id);
     if (pageIds.length === 0) { setDataLoading(false); return; }
 
-    // Fetch leads, CTAs, and sales in parallel
     const [leadsRes, ctaRes, salesRes] = await Promise.all([
-      supabase.from("leads_clicks").select("id, page_id, utm_source, country, city").in("page_id", pageIds),
-      supabase.from("cta_clicks").select("page_id, button_id, button_text").in("page_id", pageIds),
+      supabase.from("leads_clicks").select("id, page_id, utm_source, country, city").in("page_id", pageIds).gte("created_at", from).lte("created_at", to),
+      supabase.from("cta_clicks").select("page_id, button_id, button_text").in("page_id", pageIds).gte("created_at", from).lte("created_at", to),
       supabase.from("sales").select("lead_id, amount_mzn"),
     ]);
 
@@ -66,7 +70,6 @@ export default function Pages() {
     const ctas = ctaRes.data || [];
     const allSales = salesRes.data || [];
 
-    // Map lead_id → page_id for sales attribution
     const leadToPage: Record<string, string> = {};
     leads.forEach((l: any) => { if (l.id && l.page_id) leadToPage[l.id] = l.page_id; });
 
@@ -74,11 +77,8 @@ export default function Pages() {
     for (const page of pagesData) {
       const pageLeads = leads.filter(l => l.page_id === page.id);
       const pageCtas = ctas.filter(c => c.page_id === page.id);
-
-      // Sales for this page (via lead_id attribution)
       const pageSales = allSales.filter((s: any) => s.lead_id && leadToPage[s.lead_id] === page.id);
 
-      // Top CTAs
       const ctaMap: Record<string, { text: string; count: number }> = {};
       pageCtas.forEach((c: any) => {
         const key = c.button_id || c.button_text || "unknown";
@@ -87,18 +87,13 @@ export default function Pages() {
       });
       const topCtas = Object.values(ctaMap).sort((a, b) => b.count - a.count).slice(0, 5);
 
-      // UTM Sources (detailed)
       const srcMap: Record<string, number> = {};
       pageLeads.forEach((l: any) => {
         const src = l.utm_source || "Direto";
         srcMap[src] = (srcMap[src] || 0) + 1;
       });
-      const utmSources = Object.entries(srcMap)
-        .map(([source, count]) => ({ source, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
+      const utmSources = Object.entries(srcMap).map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count).slice(0, 5);
 
-      // Countries + cities
       const locMap: Record<string, { country: string; city: string; count: number }> = {};
       pageLeads.forEach((l: any) => {
         const country = l.country || "";
@@ -110,23 +105,19 @@ export default function Pages() {
       });
       const countries = Object.values(locMap).sort((a, b) => b.count - a.count).slice(0, 8);
 
-      const visitors = pageLeads.length;
-      const clicks = pageCtas.length;
-      const sales = pageSales.length;
-
       metrics[page.id] = {
-        visitors,
-        clicks,
-        sales,
+        visitors: pageLeads.length,
+        clicks: pageCtas.length,
+        sales: pageSales.length,
         topCtas,
         utmSources,
         countries,
-        conversionRate: visitors > 0 ? (sales / visitors) * 100 : 0,
+        conversionRate: pageLeads.length > 0 ? (pageSales.length / pageLeads.length) * 100 : 0,
       };
     }
     setPageMetrics(metrics);
     setDataLoading(false);
-  }, []);
+  }, [dateRange]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,6 +147,10 @@ export default function Pages() {
   var fp=navigator.userAgent+screen.width+screen.height+new Date().getTimezoneOffset();
   var hash=0;for(var i=0;i<fp.length;i++){hash=((hash<<5)-hash)+fp.charCodeAt(i);hash|=0;}
   var fingerprint=Math.abs(hash).toString(36);
+  var ref=document.referrer||"";
+  var utmSrc=params.get("utm_source")||"";
+  if(!utmSrc&&ref.match(/instagram\\.com|l\\.instagram\\.com/i)){utmSrc="instagram";}
+  if(!utmSrc&&ref.match(/facebook\\.com|fb\\.com|m\\.facebook/i)){utmSrc="facebook";}
   
   fetch("https://${projectId}.supabase.co/functions/v1/track",{
     method:"POST",
@@ -163,8 +158,8 @@ export default function Pages() {
     body:JSON.stringify({
       page_id:pid,page_url:purl,fingerprint:fingerprint,
       ip_address:"",user_agent:navigator.userAgent,
-      referrer:document.referrer,
-      utm_source:params.get("utm_source")||"",
+      referrer:ref,
+      utm_source:utmSrc||params.get("utm_source")||"",
       utm_medium:params.get("utm_medium")||"",
       utm_campaign:params.get("utm_campaign")||"",
       utm_content:params.get("utm_content")||"",
@@ -205,29 +200,32 @@ export default function Pages() {
           <h1 className="font-display text-3xl font-bold">Páginas</h1>
           <p className="text-muted-foreground">Rastreie visitantes, CTAs e conversões das suas páginas de vendas</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gradient-primary text-primary-foreground active:scale-95 transition-transform w-full sm:w-auto">
-              <Plus className="mr-2 h-4 w-4" />Nova Página
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="glass-card border-border">
-            <DialogHeader><DialogTitle className="font-display">Adicionar Página</DialogTitle></DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Nome</Label>
-                <Input value={name} onChange={e => setName(e.target.value)} placeholder="Página de Vendas Principal" required />
-              </div>
-              <div className="space-y-2">
-                <Label>URL</Label>
-                <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://minhapagina.com" required />
-              </div>
-              <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
-                {loading ? "Adicionando..." : "Adicionar Página"}
+        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+          <DateFilter value={dateRange} onChange={setDateRange} />
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="gradient-primary text-primary-foreground active:scale-95 transition-transform">
+                <Plus className="mr-2 h-4 w-4" />Nova Página
               </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="glass-card border-border">
+              <DialogHeader><DialogTitle className="font-display">Adicionar Página</DialogTitle></DialogHeader>
+              <form onSubmit={handleCreate} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input value={name} onChange={e => setName(e.target.value)} placeholder="Página de Vendas Principal" required />
+                </div>
+                <div className="space-y-2">
+                  <Label>URL</Label>
+                  <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://minhapagina.com" required />
+                </div>
+                <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
+                  {loading ? "Adicionando..." : "Adicionar Página"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {pages.length === 0 ? (
@@ -242,11 +240,7 @@ export default function Pages() {
           {pages.map((page, idx) => {
             const m = pageMetrics[page.id] || { visitors: 0, clicks: 0, sales: 0, topCtas: [], utmSources: [], countries: [], conversionRate: 0 };
             return (
-              <Card
-                key={page.id}
-                className="glass-card border-border hover:shadow-[0_0_25px_hsl(150_100%_50%/0.08)] transition-all duration-300 animate-fade-in"
-                style={{ animationDelay: `${idx * 100}ms`, animationFillMode: "both" }}
-              >
+              <Card key={page.id} className="glass-card border-border hover:shadow-[0_0_25px_hsl(150_100%_50%/0.08)] transition-all duration-300 animate-fade-in" style={{ animationDelay: `${idx * 100}ms`, animationFillMode: "both" }}>
                 <CardHeader>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="min-w-0">
@@ -255,67 +249,35 @@ export default function Pages() {
                         <Link className="h-3 w-3 flex-shrink-0" /><span className="truncate">{page.url}</span>
                       </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyScript(page)}
-                      className="border-border w-full sm:w-auto flex-shrink-0 active:scale-95 transition-transform"
-                    >
+                    <Button variant="outline" size="sm" onClick={() => copyScript(page)} className="border-border w-full sm:w-auto flex-shrink-0 active:scale-95 transition-transform">
                       {copied === page.id ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
                       {copied === page.id ? "Copiado!" : "Copiar Script"}
                     </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* KPI Row */}
                   <div className="grid gap-3 grid-cols-2 sm:grid-cols-5">
-                    <div className="flex items-center gap-3 rounded-lg bg-secondary/50 p-3 hover:shadow-[0_0_15px_hsl(150_100%_50%/0.1)] transition-all duration-300">
-                      <Eye className="h-5 w-5 text-primary flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Visitantes</p>
-                        <p className="font-display text-lg font-bold">{m.visitors}</p>
+                    {[
+                      { icon: Eye, label: "Visitantes", value: m.visitors },
+                      { icon: MousePointerClick, label: "Cliques CTA", value: m.clicks },
+                      { icon: ShoppingCart, label: "Vendas", value: m.sales, highlight: true },
+                      { icon: BarChart3, label: "Conversão", value: `${m.conversionRate.toFixed(1)}%` },
+                      { icon: TrendingUp, label: "CTA Top", value: m.topCtas[0]?.text || "—", truncate: true },
+                    ].map((kpi, i) => (
+                      <div key={i} className="flex items-center gap-3 rounded-lg bg-secondary/50 p-3 hover:shadow-[0_0_15px_hsl(150_100%_50%/0.1)] transition-all duration-300">
+                        <kpi.icon className="h-5 w-5 text-primary flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-muted-foreground">{kpi.label}</p>
+                          <p className={`font-display text-lg font-bold ${kpi.truncate ? "text-sm truncate max-w-[100px]" : ""} ${kpi.highlight ? "text-primary" : ""}`}>{kpi.value}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3 rounded-lg bg-secondary/50 p-3 hover:shadow-[0_0_15px_hsl(150_100%_50%/0.1)] transition-all duration-300">
-                      <MousePointerClick className="h-5 w-5 text-primary flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Cliques CTA</p>
-                        <p className="font-display text-lg font-bold">{m.clicks}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 rounded-lg bg-secondary/50 p-3 hover:shadow-[0_0_15px_hsl(150_100%_50%/0.1)] transition-all duration-300">
-                      <ShoppingCart className="h-5 w-5 text-primary flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Vendas</p>
-                        <p className="font-display text-lg font-bold text-primary">{m.sales}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 rounded-lg bg-secondary/50 p-3 hover:shadow-[0_0_15px_hsl(150_100%_50%/0.1)] transition-all duration-300">
-                      <BarChart3 className="h-5 w-5 text-primary flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Conversão</p>
-                        <p className="font-display text-lg font-bold">{m.conversionRate.toFixed(1)}%</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 rounded-lg bg-secondary/50 p-3 hover:shadow-[0_0_15px_hsl(150_100%_50%/0.1)] transition-all duration-300">
-                      <TrendingUp className="h-5 w-5 text-primary flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">CTA Top</p>
-                        <p className="font-display text-sm font-bold truncate max-w-[100px]">
-                          {m.topCtas[0]?.text || "—"}
-                        </p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
 
-                  {/* Details Grid */}
                   <div className="grid gap-4 sm:grid-cols-3">
-                    {/* Top CTAs */}
                     {m.topCtas.length > 0 && (
                       <div>
-                        <p className="mb-2 text-sm font-medium text-muted-foreground flex items-center gap-1">
-                          <MousePointerClick className="h-3 w-3" /> Top CTAs
-                        </p>
+                        <p className="mb-2 text-sm font-medium text-muted-foreground flex items-center gap-1"><MousePointerClick className="h-3 w-3" /> Top CTAs</p>
                         <div className="space-y-1">
                           {m.topCtas.map((cta, i) => (
                             <div key={i} className="flex items-center justify-between rounded bg-secondary/30 px-2 py-1">
@@ -326,13 +288,9 @@ export default function Pages() {
                         </div>
                       </div>
                     )}
-
-                    {/* UTM Sources — detailed */}
                     {m.utmSources.length > 0 && (
                       <div>
-                        <p className="mb-2 text-sm font-medium text-muted-foreground flex items-center gap-1">
-                          <TrendingUp className="h-3 w-3" /> Origens
-                        </p>
+                        <p className="mb-2 text-sm font-medium text-muted-foreground flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Origens</p>
                         <div className="space-y-1">
                           {m.utmSources.map((s, i) => (
                             <div key={i} className="flex items-center justify-between rounded bg-secondary/30 px-2 py-1">
@@ -343,19 +301,13 @@ export default function Pages() {
                         </div>
                       </div>
                     )}
-
-                    {/* Countries + Cities */}
                     {m.countries.length > 0 && (
                       <div>
-                        <p className="mb-2 text-sm font-medium text-muted-foreground flex items-center gap-1">
-                          <MapPin className="h-3 w-3" /> Localização
-                        </p>
+                        <p className="mb-2 text-sm font-medium text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Localização</p>
                         <div className="space-y-1">
                           {m.countries.map((c, i) => (
                             <div key={i} className="flex items-center justify-between rounded bg-secondary/30 px-2 py-1">
-                              <span className="text-sm truncate max-w-[150px]">
-                                {c.country}{c.city ? ` — ${c.city}` : ""}
-                              </span>
+                              <span className="text-sm truncate max-w-[150px]">{c.country}{c.city ? ` — ${c.city}` : ""}</span>
                               <Badge variant="outline" className="border-border text-xs">{c.count}</Badge>
                             </div>
                           ))}
@@ -365,9 +317,7 @@ export default function Pages() {
                   </div>
 
                   {m.visitors === 0 && m.clicks === 0 && (
-                    <p className="text-center text-muted-foreground text-sm py-4">
-                      Nenhum dado ainda — cole o script na sua página para começar a rastrear
-                    </p>
+                    <p className="text-center text-muted-foreground text-sm py-4">Nenhum dado ainda — cole o script na sua página para começar a rastrear</p>
                   )}
                 </CardContent>
               </Card>
