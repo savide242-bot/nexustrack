@@ -81,8 +81,9 @@ export default function Pages() {
 
       const ctaMap: Record<string, { text: string; count: number }> = {};
       pageCtas.forEach((c: any) => {
-        const key = c.button_id || c.button_text || "unknown";
-        if (!ctaMap[key]) ctaMap[key] = { text: c.button_text || key, count: 0 };
+        const text = c.button_text || c.button_id || "Botão";
+        const key = c.button_id || text;
+        if (!ctaMap[key]) ctaMap[key] = { text, count: 0 };
         ctaMap[key].count++;
       });
       const topCtas = Object.values(ctaMap).sort((a, b) => b.count - a.count).slice(0, 5);

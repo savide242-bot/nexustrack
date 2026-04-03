@@ -5,6 +5,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function mapStatus(event: string, amount: number): string {
+  if (amount <= 0) return "cancelled";
+  const e = event.toUpperCase();
+  if (e.includes("REFUND") || e.includes("CHARGEBACK")) return "refunded";
+  if (e.includes("CANCEL") || e.includes("PROTEST")) return "cancelled";
+  if (e.includes("PURCHASE") || e.includes("APPROVED") || e.includes("COMPLETE")) return "approved";
+  return "pending";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -15,8 +24,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Extract data from Hotmart webhook
-    // Filter out test webhooks
+    // Filter test webhooks
     const isTest = payload.test === true || 
       payload.data?.test === true ||
       (payload.data?.buyer?.email || payload.buyer?.email || "").toLowerCase().includes("@example.com") ||
@@ -41,9 +49,7 @@ Deno.serve(async (req) => {
     const originalCurrency = purchase.price?.currency_code || "USD";
     const transactionId = purchase.transaction || "";
     const productName = product.name || "";
-    const status = event.includes("REFUND") ? "refunded" : 
-                   event.includes("CANCEL") ? "cancelled" :
-                   event.includes("PURCHASE") || event.includes("APPROVED") ? "approved" : "pending";
+    const status = mapStatus(event, originalAmount);
 
     // Convert currency to MZN
     let exchangeRate = 1;
@@ -60,13 +66,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Find user - multiple strategies
+    // ONLY Strategy 1: strict match via hottok → profiles.hotmart_token
     const hottok = payload.hottok || payload.data?.hottok || "";
     let campaignId: string | null = null;
     let userId: string | null = null;
     let leadId: string | null = null;
 
-    // Strategy 1: Find via hottok in profiles
     if (hottok) {
       const { data: profile } = await supabase
         .from("profiles")
@@ -86,33 +91,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Strategy 2: Find via buyer email in profiles
-    if (!userId && buyerEmail) {
-      // Check auth.users via admin API isn't possible, but we can check all profiles
-      // and match campaigns by user
-      const { data: allProfiles } = await supabase
-        .from("profiles")
-        .select("user_id, hotmart_token")
-        .not("hotmart_token", "is", null);
-      
-      // If only one user exists with a hotmart_token configured, it's likely them
-      if (allProfiles && allProfiles.length === 1) {
-        userId = allProfiles[0].user_id;
-      }
-    }
-
-    // Strategy 3: If still no user, get the first profile with hotmart_token
+    // No user found — skip (multi-tenant isolation)
     if (!userId) {
-      const { data: fallbackProfile } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .not("hotmart_token", "is", null)
-        .limit(1)
-        .single();
-      if (fallbackProfile) userId = fallbackProfile.user_id;
+      return new Response(JSON.stringify({ ok: true, skipped: "no matching user" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Lead attribution
+    // Lead attribution — filter only this user's leads
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: leads } = await supabase
       .from("leads_clicks")
@@ -121,9 +107,27 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: false })
       .limit(500);
 
-    if (leads && leads.length > 0) {
+    // Filter leads to only those belonging to this user's campaigns/pages
+    const { data: userCampaigns } = await supabase
+      .from("campaigns")
+      .select("id")
+      .eq("user_id", userId);
+    const { data: userPages } = await supabase
+      .from("pages")
+      .select("id")
+      .eq("user_id", userId);
+
+    const userCampaignIds = new Set((userCampaigns || []).map(c => c.id));
+    const userPageIds = new Set((userPages || []).map(p => p.id));
+
+    const userLeads = (leads || []).filter(l =>
+      (l.campaign_id && userCampaignIds.has(l.campaign_id)) ||
+      (l.page_id && userPageIds.has(l.page_id))
+    );
+
+    if (userLeads.length > 0) {
       let bestScore = 0;
-      for (const lead of leads) {
+      for (const lead of userLeads) {
         let score = 0;
         if (buyerEmail && lead.email && lead.email.toLowerCase() === buyerEmail.toLowerCase()) score += 40;
         if (buyerPhone && lead.phone && lead.phone.replace(/\D/g, "").includes(buyerPhone.replace(/\D/g, ""))) score += 30;
@@ -137,20 +141,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get userId from campaign if needed
-    if (campaignId && !userId) {
-      const { data: camp } = await supabase
-        .from("campaigns")
-        .select("user_id")
-        .eq("id", campaignId)
-        .single();
-      if (camp) userId = camp.user_id;
-    }
-
-    // Generate unique transaction_id if empty to avoid duplicate key issues
     const finalTransactionId = transactionId || `hotmart_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
-    // Insert sale
+    // IDEMPOTENCY: Check if sale already exists
+    const { data: existingSale } = await supabase
+      .from("sales")
+      .select("id, status")
+      .eq("transaction_id", finalTransactionId)
+      .maybeSingle();
+
+    if (existingSale) {
+      // Update status only (e.g. approved → refunded)
+      if (existingSale.status !== status) {
+        await supabase
+          .from("sales")
+          .update({ status, hotmart_payload: payload })
+          .eq("id", existingSale.id);
+      }
+      return new Response(JSON.stringify({ ok: true, updated: true, sale_id: existingSale.id }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Insert new sale
     const { data: sale, error: saleErr } = await supabase.from("sales").insert({
       campaign_id: campaignId,
       lead_id: leadId,
@@ -171,7 +184,7 @@ Deno.serve(async (req) => {
 
     if (saleErr) throw saleErr;
 
-    // Send push notification if sale is approved and we have a userId
+    // Only send notifications + CAPI for NEW approved sales
     if (status === "approved" && userId) {
       await supabase.from("notifications_log").insert({
         user_id: userId,
@@ -210,7 +223,7 @@ Deno.serve(async (req) => {
 
       if (pixelId && accessToken) {
         try {
-          const matchedLead = leads?.find(l => l.id === leadId);
+          const matchedLead = userLeads.find(l => l.id === leadId);
           const capiUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/meta-capi`;
           await fetch(capiUrl, {
             method: "POST",
