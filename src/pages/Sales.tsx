@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShoppingCart, RotateCcw } from "lucide-react";
+import { ShoppingCart, RotateCcw, XCircle } from "lucide-react";
 import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
 
 export default function Sales() {
@@ -40,11 +40,13 @@ export default function Sales() {
   const statusColor = (s: string) => {
     if (s === "approved") return "bg-primary/20 text-primary";
     if (s === "refunded") return "bg-destructive/20 text-destructive";
+    if (s === "cancelled") return "bg-orange-500/20 text-orange-400";
     return "bg-muted text-muted-foreground";
   };
 
-  const activeSales = sales.filter(s => s.status !== "refunded" && Number(s.amount_mzn) > 0);
-  const refunds = sales.filter(s => s.status === "refunded" || Number(s.amount_mzn) <= 0);
+  const activeSales = sales.filter(s => s.status === "approved" && Number(s.amount_mzn) > 0);
+  const cancelled = sales.filter(s => s.status === "cancelled" || (s.status !== "refunded" && Number(s.amount_mzn) <= 0));
+  const refunds = sales.filter(s => s.status === "refunded");
 
   const SalesTable = ({ data }: { data: any[] }) => (
     data.length === 0 ? (
@@ -112,6 +114,10 @@ export default function Sales() {
             <ShoppingCart className="h-3.5 w-3.5" />
             Vendas ({activeSales.length})
           </TabsTrigger>
+          <TabsTrigger value="cancelled" className="gap-1.5">
+            <XCircle className="h-3.5 w-3.5" />
+            Canceladas ({cancelled.length})
+          </TabsTrigger>
           <TabsTrigger value="refunds" className="gap-1.5">
             <RotateCcw className="h-3.5 w-3.5" />
             Reembolsos ({refunds.length})
@@ -119,6 +125,9 @@ export default function Sales() {
         </TabsList>
         <TabsContent value="sales" className="mt-4">
           <SalesTable data={activeSales} />
+        </TabsContent>
+        <TabsContent value="cancelled" className="mt-4">
+          <SalesTable data={cancelled} />
         </TabsContent>
         <TabsContent value="refunds" className="mt-4">
           <SalesTable data={refunds} />
