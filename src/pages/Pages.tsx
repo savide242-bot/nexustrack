@@ -170,6 +170,22 @@ export default function Pages() {
     })
   }).then(r=>r.json()).then(function(d){
     window.__nxLeadId=d.lead_id;
+    function getCtaLabel(el){
+      var t=el.innerText||el.textContent||"";t=t.trim().substring(0,80);
+      if(t)return t;
+      if(el.title)return el.title;
+      if(el.getAttribute("aria-label"))return el.getAttribute("aria-label");
+      var parent=el.closest("[class*=testimon],[class*=review],[class*=slider],[class*=carousel],[class*=swiper]");
+      if(parent){
+        var cls=(el.className||"").toLowerCase();
+        if(cls.match(/prev|left|back/))return "Previous Testimonial";
+        if(cls.match(/next|right|forward/))return "Next Testimonial";
+        var svg=el.querySelector("svg");
+        if(svg)return "Slider Navigation";
+      }
+      if(el.tagName==="A"&&el.href)return "Link: "+el.href.substring(0,50);
+      return el.tagName==="BUTTON"?"Botão":"Link";
+    }
     document.querySelectorAll("a,button,[data-cta]").forEach(function(el){
       el.addEventListener("click",function(){
         fetch("https://${projectId}.supabase.co/functions/v1/track-cta",{
@@ -177,7 +193,7 @@ export default function Pages() {
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({
             page_id:pid,lead_id:window.__nxLeadId,
-            button_id:el.id||el.getAttribute("data-cta")||"",button_text:el.innerText||el.textContent||el.title||el.getAttribute("aria-label")||el.tagName||"",page_url:purl
+            button_id:el.id||el.getAttribute("data-cta")||"",button_text:getCtaLabel(el),page_url:purl
           })
         });
       });
