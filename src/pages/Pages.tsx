@@ -176,7 +176,7 @@ export default function Pages() {
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({
             page_id:pid,lead_id:window.__nxLeadId,
-            button_id:el.id||"",button_text:el.innerText||"",page_url:purl
+            button_id:el.id||el.getAttribute("data-cta")||"",button_text:el.innerText||el.textContent||el.title||el.getAttribute("aria-label")||el.tagName||"",page_url:purl
           })
         });
       });
