@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hotmart-hottok",
 };
 
 function mapStatus(event: string, amount: number): string {
@@ -19,6 +19,7 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
+    const headerHottok = req.headers.get("x-hotmart-hottok")?.trim() || req.headers.get("X-HOTMART-HOTTOK")?.trim() || "";
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -51,6 +52,14 @@ Deno.serve(async (req) => {
     const productName = product.name || "";
     const status = mapStatus(event, originalAmount);
 
+    console.log("Hotmart webhook received", {
+      event,
+      transactionId,
+      status,
+      hasHeaderHottok: Boolean(headerHottok),
+      hasBodyHottok: Boolean(payload.hottok || payload.data?.hottok),
+    });
+
     // Convert currency to MZN
     let exchangeRate = 1;
     let amountMzn = originalAmount;
@@ -67,7 +76,7 @@ Deno.serve(async (req) => {
     }
 
     // ONLY Strategy 1: strict match via hottok → profiles.hotmart_token
-    const hottok = payload.hottok || payload.data?.hottok || "";
+    const hottok = headerHottok || payload.hottok || payload.data?.hottok || "";
     let campaignId: string | null = null;
     let userId: string | null = null;
     let leadId: string | null = null;
@@ -93,6 +102,11 @@ Deno.serve(async (req) => {
 
     // No user found — skip (multi-tenant isolation)
     if (!userId) {
+      console.warn("Hotmart webhook skipped: no matching user", {
+        event,
+        transactionId,
+        hottokPresent: Boolean(hottok),
+      });
       return new Response(JSON.stringify({ ok: true, skipped: "no matching user" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
