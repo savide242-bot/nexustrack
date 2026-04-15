@@ -14,6 +14,11 @@ function mapStatus(event: string, amount: number): string {
   return "pending";
 }
 
+function isApprovalOnlyEvent(event: string): boolean {
+  const e = event.toUpperCase();
+  return e.includes("APPROVED") && !e.includes("COMPLETE");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -51,6 +56,7 @@ Deno.serve(async (req) => {
     const transactionId = purchase.transaction || "";
     const productName = product.name || "";
     const status = mapStatus(event, originalAmount);
+    const approvalOnlyEvent = isApprovalOnlyEvent(event);
 
     console.log("Hotmart webhook received", {
       event,
@@ -173,6 +179,17 @@ Deno.serve(async (req) => {
           .eq("id", existingSale.id);
       }
       return new Response(JSON.stringify({ ok: true, updated: true, sale_id: existingSale.id }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (approvalOnlyEvent) {
+      console.warn("Hotmart approval skipped: missing original sale", {
+        event,
+        transactionId: finalTransactionId,
+        userId,
+      });
+      return new Response(JSON.stringify({ ok: true, skipped: "approval_without_existing_sale" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
