@@ -4,10 +4,26 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Progress } from "@/components/ui/progress";
 import { TrendingUp } from "lucide-react";
 
-const GOAL = 100_000;
 const LEGACY_OFFSET = 59_157;
 /** Only sales created after this cutoff are added on top of the legacy offset */
 const CUTOFF = "2026-04-01T00:00:00+02:00";
+
+const MILESTONES = [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000];
+
+function getMilestone(revenue: number): { floor: number; goal: number } {
+  for (const m of MILESTONES) {
+    if (revenue < m) return { floor: revenue >= MILESTONES[0] ? MILESTONES[MILESTONES.indexOf(m) - 1] ?? 0 : 0, goal: m };
+  }
+  const last = MILESTONES[MILESTONES.length - 1];
+  return { floor: last, goal: last * 2 };
+}
+
+function formatAmount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+  return value.toLocaleString("pt-MZ");
+}
+
 const createChannelId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -52,8 +68,12 @@ export function RevenueProgress() {
     };
   }, [fetchRevenue, user]);
 
-  const pct = Math.min((revenue / GOAL) * 100, 100);
-  const formatted = revenue >= 1000 ? `${(revenue / 1000).toFixed(1)}K` : revenue.toLocaleString("pt-MZ");
+  const { floor, goal } = getMilestone(revenue);
+  const range = goal - floor;
+  const progress = revenue - floor;
+  const pct = Math.min((progress / range) * 100, 100);
+  const formatted = formatAmount(revenue);
+  const goalFormatted = formatAmount(goal);
 
   return (
     <div className="flex items-center gap-3 min-w-[200px] max-w-[320px]">
@@ -61,7 +81,7 @@ export function RevenueProgress() {
       <div className="flex-1 space-y-1">
         <div className="flex items-center justify-between text-xs">
           <span className="font-mono font-medium text-foreground">{formatted} MT</span>
-          <span className="text-muted-foreground">100K MT</span>
+          <span className="text-muted-foreground">{goalFormatted} MT</span>
         </div>
         <Progress value={pct} className="h-2" />
       </div>
