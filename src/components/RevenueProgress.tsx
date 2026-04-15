@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Progress } from "@/components/ui/progress";
 import { TrendingUp } from "lucide-react";
 
-const LEGACY_OFFSET = 59_157;
+const LEGACY_OFFSET = 40_141;
 /** Only sales created after this cutoff are added on top of the legacy offset */
 const CUTOFF = "2026-04-01T00:00:00+02:00";
 
