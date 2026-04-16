@@ -44,6 +44,90 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
 
+    // --- Send ViewContent to Meta CAPI ---
+    if (lead_id) {
+      // Fetch lead data for matching identifiers
+      const { data: lead } = await supabase.from("leads_clicks").select("*").eq("id", lead_id).single();
+
+      if (lead) {
+        let pixelId: string | null = null;
+        let accessToken: string | null = null;
+        let userId: string | null = null;
+
+        if (page_id) {
+          const { data: pageData } = await supabase.from("pages").select("user_id, campaign_id").eq("id", page_id).single();
+          if (pageData) {
+            userId = pageData.user_id;
+            if (pageData.campaign_id) {
+              const { data: camp } = await supabase.from("campaigns").select("meta_pixel_id, meta_access_token").eq("id", pageData.campaign_id).single();
+              if (camp?.meta_pixel_id && camp?.meta_access_token) {
+                pixelId = camp.meta_pixel_id;
+                accessToken = camp.meta_access_token;
+              }
+            }
+            if (!pixelId && userId) {
+              const { data: prof } = await supabase.from("profiles").select("meta_pixel_id, meta_access_token").eq("user_id", userId).single();
+              if (prof?.meta_pixel_id && prof?.meta_access_token) {
+                pixelId = prof.meta_pixel_id;
+                accessToken = prof.meta_access_token;
+              }
+            }
+          }
+        } else if (campaign_id) {
+          const { data: camp } = await supabase.from("campaigns").select("user_id, meta_pixel_id, meta_access_token").eq("id", campaign_id).single();
+          if (camp) {
+            userId = camp.user_id;
+            if (camp.meta_pixel_id && camp.meta_access_token) {
+              pixelId = camp.meta_pixel_id;
+              accessToken = camp.meta_access_token;
+            } else {
+              const { data: prof } = await supabase.from("profiles").select("meta_pixel_id, meta_access_token").eq("user_id", camp.user_id).single();
+              if (prof?.meta_pixel_id && prof?.meta_access_token) {
+                pixelId = prof.meta_pixel_id;
+                accessToken = prof.meta_access_token;
+              }
+            }
+          }
+        }
+
+        if (pixelId && accessToken) {
+          try {
+            const capiUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/meta-capi`;
+            await fetch(capiUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              },
+              body: JSON.stringify({
+                campaign_id,
+                pixel_id: pixelId,
+                access_token: accessToken,
+                event_name: "ViewContent",
+                user_id: userId,
+                event_data: {
+                  email: lead.email || "",
+                  phone: lead.phone || "",
+                  name: lead.name || "",
+                  country: lead.country || "",
+                  city: lead.city || "",
+                  state: lead.state || "",
+                  zip_code: lead.zip_code || "",
+                  ip_address: lead.ip_address || "",
+                  user_agent: lead.user_agent || "",
+                  fbc: lead.fbc || "",
+                  fbp: lead.fbp || "",
+                  content_name: sanitize(body.button_text, 200),
+                },
+              }),
+            });
+          } catch (capiErr) {
+            console.error("ViewContent CAPI error:", capiErr);
+          }
+        }
+      }
+    }
+
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("Track CTA error:", e);

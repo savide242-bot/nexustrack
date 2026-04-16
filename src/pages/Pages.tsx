@@ -153,6 +153,18 @@ export default function Pages() {
   if(!utmSrc&&ref.match(/instagram\\.com|l\\.instagram\\.com/i)){utmSrc="instagram";}
   if(!utmSrc&&ref.match(/facebook\\.com|fb\\.com|m\\.facebook/i)){utmSrc="facebook";}
   
+  // Read _fbc and _fbp from cookies (Meta sets these)
+  var getCk=function(n){return(document.cookie.match(new RegExp("(?:^|;\\\\s*)"+n+"=([^;]+)"))||[])[1]||"";};
+  var fbcCookie=getCk("_fbc");
+  var fbpCookie=getCk("_fbp");
+  // If no _fbc cookie but fbclid in URL, generate a valid fbc string
+  var fbclid=params.get("fbclid")||"";
+  if(!fbcCookie&&fbclid){fbcCookie="fb.1."+Date.now()+"."+fbclid;}
+  // If no _fbp cookie, generate one for matching
+  if(!fbpCookie){fbpCookie="fb.1."+Date.now()+"."+Math.floor(Math.random()*2147483647);try{document.cookie="_fbp="+fbpCookie+";max-age=7776000;path=/;SameSite=Lax";}catch(e){}}
+  // Store _fbc cookie if we generated one
+  if(fbcCookie&&!getCk("_fbc")){try{document.cookie="_fbc="+fbcCookie+";max-age=7776000;path=/;SameSite=Lax";}catch(e){}}
+  
   fetch("https://${projectId}.supabase.co/functions/v1/track",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
@@ -165,8 +177,8 @@ export default function Pages() {
       utm_campaign:params.get("utm_campaign")||"",
       utm_content:params.get("utm_content")||"",
       utm_term:params.get("utm_term")||"",
-      fbc:params.get("fbc")||"",
-      fbp:(document.cookie.match(/_fbp=([^;]+)/)||[])[1]||""
+      fbc:fbcCookie,
+      fbp:fbpCookie
     })
   }).then(r=>r.json()).then(function(d){
     window.__nxLeadId=d.lead_id;

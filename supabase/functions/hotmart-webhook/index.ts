@@ -274,6 +274,7 @@ Deno.serve(async (req) => {
                 name: buyerName,
                 value: originalAmount,
                 currency: originalCurrency,
+                product_name: productName || "",
                 country: matchedLead?.country || "",
                 city: matchedLead?.city || "",
                 state: matchedLead?.state || "",
