@@ -12,6 +12,14 @@ async function hashSHA256(value: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+function normalizePhone(raw: string): string {
+  return raw.replace(/[^\d]/g, "");
+}
+
+function normalizeCountry(raw: string): string {
+  return raw.trim().toLowerCase().slice(0, 2);
+}
+
 function sanitize(val: unknown, maxLen = 500): string {
   if (typeof val !== "string") return "";
   return val.trim().slice(0, maxLen);
@@ -22,7 +30,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { campaign_id, pixel_id, access_token, event_name, event_data, user_id } = body;
+    const { campaign_id, pixel_id, access_token, event_name, event_data, user_id, event_id: externalEventId } = body;
 
     if (!pixel_id || typeof pixel_id !== "string" || !/^\d{10,20}$/.test(pixel_id)) {
       return new Response(JSON.stringify({ error: "Invalid pixel_id" }), { status: 400, headers: corsHeaders });
@@ -35,27 +43,33 @@ Deno.serve(async (req) => {
     }
 
     const safeEventData = event_data || {};
-    const eventId = crypto.randomUUID();
+    const eventId =
+      typeof externalEventId === "string" && externalEventId.length >= 6 && externalEventId.length <= 120
+        ? externalEventId
+        : crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
 
     // Hash user data for Meta CAPI
     const userData: Record<string, any> = {};
-    if (safeEventData.email) userData.em = [await hashSHA256(sanitize(safeEventData.email, 320))];
-    if (safeEventData.phone) userData.ph = [await hashSHA256(sanitize(safeEventData.phone, 30))];
+    const emailNorm = sanitize(safeEventData.email, 320).toLowerCase();
+    if (emailNorm) userData.em = [await hashSHA256(emailNorm)];
+    const phoneNorm = normalizePhone(sanitize(safeEventData.phone, 30));
+    if (phoneNorm) userData.ph = [await hashSHA256(phoneNorm)];
     if (safeEventData.name) {
       const parts = String(safeEventData.name).trim().split(" ");
       userData.fn = [await hashSHA256(parts[0])];
       if (parts.length > 1) userData.ln = [await hashSHA256(parts[parts.length - 1])];
     }
-    if (safeEventData.city) userData.ct = [await hashSHA256(sanitize(safeEventData.city, 100))];
-    if (safeEventData.state) userData.st = [await hashSHA256(sanitize(safeEventData.state, 100))];
-    if (safeEventData.zip_code) userData.zp = [await hashSHA256(sanitize(safeEventData.zip_code, 20))];
-    if (safeEventData.country) userData.country = [await hashSHA256(sanitize(safeEventData.country, 5))];
+    if (safeEventData.city) userData.ct = [await hashSHA256(sanitize(safeEventData.city, 100).toLowerCase().replace(/\s+/g, ""))];
+    if (safeEventData.state) userData.st = [await hashSHA256(sanitize(safeEventData.state, 100).toLowerCase().replace(/\s+/g, ""))];
+    if (safeEventData.zip_code) userData.zp = [await hashSHA256(sanitize(safeEventData.zip_code, 20).toLowerCase())];
+    if (safeEventData.country) userData.country = [await hashSHA256(normalizeCountry(String(safeEventData.country)))];
     if (safeEventData.ip_address) userData.client_ip_address = sanitize(safeEventData.ip_address, 45);
     if (safeEventData.user_agent) userData.client_user_agent = sanitize(safeEventData.user_agent, 500);
     if (safeEventData.fbc) userData.fbc = sanitize(safeEventData.fbc, 200);
     if (safeEventData.fbp) userData.fbp = sanitize(safeEventData.fbp, 200);
-    userData.external_id = [await hashSHA256(safeEventData.email || safeEventData.phone || eventId)];
+    const externalIdSeed = emailNorm || phoneNorm || safeEventData.fingerprint || eventId;
+    userData.external_id = [await hashSHA256(String(externalIdSeed))];
 
     const eventPayload = {
       data: [{
