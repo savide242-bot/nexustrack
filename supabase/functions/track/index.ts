@@ -157,6 +157,9 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
 
+    // Dedupe PageView per lead — only fire once per new lead row created
+    const pageViewEventId = `pv_${data.id}`;
+
     // --- Send PageView to Meta CAPI ---
     // Find the page owner's pixel config
     let pixelId: string | null = null;
@@ -216,6 +219,7 @@ Deno.serve(async (req) => {
             access_token: accessToken,
             event_name: "PageView",
             user_id: userId,
+            event_id: pageViewEventId,
             event_data: {
               email,
               phone,
@@ -227,6 +231,7 @@ Deno.serve(async (req) => {
               user_agent: userAgent,
               fbc,
               fbp,
+              fingerprint: sanitize(body.fingerprint, 100),
             },
           }),
         });

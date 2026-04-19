@@ -33,12 +33,41 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    const buttonId = sanitize(body.button_id, 200);
+    const buttonText = sanitize(body.button_text, 500);
+
+    // Dedupe ViewContent per (lead_id, button) — avoid spamming pixel with repeat clicks
+    if (lead_id) {
+      const dedupeKey = (buttonId || buttonText || "cta").toLowerCase();
+      const { data: existingClick } = await supabase
+        .from("cta_clicks")
+        .select("id")
+        .eq("lead_id", lead_id)
+        .or(`button_id.eq.${buttonId},button_text.eq.${buttonText}`)
+        .limit(1)
+        .maybeSingle();
+      if (existingClick) {
+        // Still record the click for analytics, but skip CAPI
+        await supabase.from("cta_clicks").insert({
+          campaign_id,
+          page_id,
+          lead_id,
+          button_id: buttonId,
+          button_text: buttonText,
+          page_url: sanitize(body.page_url, 2000),
+        });
+        return new Response(JSON.stringify({ ok: true, deduped: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const { error } = await supabase.from("cta_clicks").insert({
       campaign_id,
       page_id,
       lead_id,
-      button_id: sanitize(body.button_id, 200),
-      button_text: sanitize(body.button_text, 500),
+      button_id: buttonId,
+      button_text: buttonText,
       page_url: sanitize(body.page_url, 2000),
     });
 
@@ -50,6 +79,7 @@ Deno.serve(async (req) => {
       const { data: lead } = await supabase.from("leads_clicks").select("*").eq("id", lead_id).single();
 
       if (lead) {
+        const viewContentEventId = `vc_${lead_id}_${(buttonId || buttonText || "cta").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 40)}`;
         let pixelId: string | null = null;
         let accessToken: string | null = null;
         let userId: string | null = null;
@@ -105,6 +135,7 @@ Deno.serve(async (req) => {
                 access_token: accessToken,
                 event_name: "ViewContent",
                 user_id: userId,
+                event_id: viewContentEventId,
                 event_data: {
                   email: lead.email || "",
                   phone: lead.phone || "",
@@ -117,7 +148,8 @@ Deno.serve(async (req) => {
                   user_agent: lead.user_agent || "",
                   fbc: lead.fbc || "",
                   fbp: lead.fbp || "",
-                  content_name: sanitize(body.button_text, 200),
+                  content_name: buttonText.slice(0, 200),
+                  fingerprint: lead.fingerprint || "",
                 },
               }),
             });

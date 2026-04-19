@@ -250,6 +250,8 @@ Deno.serve(async (req) => {
         try {
           const matchedLead = userLeads.find(l => l.id === leadId);
           const capiUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/meta-capi`;
+          // Deterministic event_id so Meta dedupes if the same purchase fires again later
+          const purchaseEventId = `purchase_${finalTransactionId}`;
           await fetch(capiUrl, {
             method: "POST",
             headers: {
@@ -262,6 +264,7 @@ Deno.serve(async (req) => {
               access_token: accessToken,
               event_name: "Purchase",
               user_id: userId,
+              event_id: purchaseEventId,
               event_data: {
                 email: buyerEmail,
                 phone: buyerPhone,
@@ -277,6 +280,7 @@ Deno.serve(async (req) => {
                 user_agent: matchedLead?.user_agent || "",
                 fbc: matchedLead?.fbc || "",
                 fbp: matchedLead?.fbp || "",
+                fingerprint: matchedLead?.fingerprint || "",
               },
             }),
           });
