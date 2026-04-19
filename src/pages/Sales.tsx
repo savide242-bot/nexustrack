@@ -12,6 +12,7 @@ export default function Sales() {
   const { user } = useAuth();
   const [sales, setSales] = useState<any[]>([]);
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
+  const saleStatuses = new Set(["realized", "approved"]);
 
   useEffect(() => {
     if (!user) return;
@@ -39,12 +40,13 @@ export default function Sales() {
 
   const statusColor = (s: string) => {
     if (s === "approved") return "bg-primary/20 text-primary";
+    if (s === "realized") return "bg-primary/10 text-primary";
     if (s === "refunded") return "bg-destructive/20 text-destructive";
     if (s === "cancelled") return "bg-orange-500/20 text-orange-400";
     return "bg-muted text-muted-foreground";
   };
 
-  const activeSales = sales.filter(s => s.status === "approved" && Number(s.amount_mzn) > 0);
+  const activeSales = sales.filter(s => saleStatuses.has(s.status) && Number(s.amount_mzn) > 0);
   const cancelled = sales.filter(s => s.status === "cancelled" || (s.status !== "refunded" && Number(s.amount_mzn) <= 0));
   const refunds = sales.filter(s => s.status === "refunded");
 
