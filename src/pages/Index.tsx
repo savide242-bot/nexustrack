@@ -5,25 +5,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, ShoppingCart, TrendingUp, Users, Target, BarChart3 } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
+import { DeltaBadge } from "@/components/DeltaBadge";
+import { TopProducts } from "@/components/dashboard/TopProducts";
+import { SalesHeatmap } from "@/components/dashboard/SalesHeatmap";
+import { Funnel } from "@/components/dashboard/Funnel";
+import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
+import { formatMzn, pctDelta } from "@/lib/format";
 
 interface MetricCardProps {
   title: string;
   value: string;
   icon: React.ElementType;
-  change?: string;
+  delta?: number | null;
 }
 
-function MetricCard({ title, value, icon: Icon, change }: MetricCardProps) {
+function MetricCard({ title, value, icon: Icon, delta }: MetricCardProps) {
   return (
     <Card className="glass-card border-border hover:neon-border transition-all duration-300">
       <CardContent className="p-5">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
             <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="mt-1 font-display text-2xl font-bold text-foreground">{value}</p>
-            {change && <p className="mt-1 text-xs text-primary">{change}</p>}
+            <p className="mt-1 font-display text-2xl font-bold text-foreground truncate">{value}</p>
+            {delta !== undefined && <div className="mt-1"><DeltaBadge delta={delta ?? null} /></div>}
           </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
             <Icon className="h-5 w-5 text-primary" />
           </div>
         </div>
@@ -33,14 +39,8 @@ function MetricCard({ title, value, icon: Icon, change }: MetricCardProps) {
 }
 
 const SOURCE_COLORS = [
-  "hsl(150,100%,50%)",
-  "hsl(200,80%,50%)",
-  "hsl(280,80%,60%)",
-  "hsl(40,90%,50%)",
-  "hsl(0,80%,55%)",
-  "hsl(170,70%,45%)",
-  "hsl(320,70%,55%)",
-  "hsl(60,80%,50%)",
+  "hsl(150,100%,50%)", "hsl(200,80%,50%)", "hsl(280,80%,60%)", "hsl(40,90%,50%)",
+  "hsl(0,80%,55%)", "hsl(170,70%,45%)", "hsl(320,70%,55%)", "hsl(60,80%,50%)",
 ];
 
 function MiniDonut({ percent, color, size = 36 }: { percent: number; color: string; size?: number }) {
@@ -50,13 +50,8 @@ function MiniDonut({ percent, color, size = 36 }: { percent: number; color: stri
   return (
     <svg width={size} height={size} className="flex-shrink-0">
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(0,0%,18%)" strokeWidth={4} />
-      <circle
-        cx={size / 2} cy={size / 2} r={r} fill="none"
-        stroke={color} strokeWidth={4}
-        strokeDasharray={`${filled} ${circ - filled}`}
-        strokeDashoffset={circ / 4}
-        strokeLinecap="round"
-      />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={4}
+        strokeDasharray={`${filled} ${circ - filled}`} strokeDashoffset={circ / 4} strokeLinecap="round" />
     </svg>
   );
 }
@@ -75,56 +70,68 @@ function SourceRow({ name, count, total, color }: { name: string; count: number;
   );
 }
 
+interface Sale {
+  created_at: string;
+  amount_mzn: number | string | null;
+  status: string;
+  product_name: string | null;
+}
+
 export default function Index() {
   const { user } = useAuth();
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
-  const [totalMzn, setTotalMzn] = useState(0);
-  const [totalSales, setTotalSales] = useState(0);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [prevSales, setPrevSales] = useState<Sale[]>([]);
   const [totalLeads, setTotalLeads] = useState(0);
+  const [prevLeads, setPrevLeads] = useState(0);
+  const [totalCtas, setTotalCtas] = useState(0);
   const [utmSources, setUtmSources] = useState<{ name: string; value: number }[]>([]);
-  const [dailySales, setDailySales] = useState<any[]>([]);
+  const [dailySales, setDailySales] = useState<{ date: string; vendas: number }[]>([]);
 
   useEffect(() => {
     if (!user) return;
-    const from = dateRange.from.toISOString();
-    const to = dateRange.to.toISOString();
+    const from = dateRange.from;
+    const to = dateRange.to;
+    const span = to.getTime() - from.getTime();
+    const prevFrom = new Date(from.getTime() - span);
+    const prevTo = from;
 
-    const fetchDashboard = async () => {
-      const { data: sales } = await supabase
-        .from("sales")
-        .select("*")
-        .gte("created_at", from)
-        .lte("created_at", to)
-        .order("created_at", { ascending: false });
+    const fetchAll = async () => {
+      const [
+        { data: curSales },
+        { data: prSales },
+        { count: leadsCount },
+        { count: prevLeadsCount },
+        { count: ctaCount },
+        { data: leads },
+      ] = await Promise.all([
+        supabase.from("sales").select("created_at, amount_mzn, status, product_name").gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
+        supabase.from("sales").select("created_at, amount_mzn, status, product_name").gte("created_at", prevFrom.toISOString()).lt("created_at", prevTo.toISOString()),
+        supabase.from("leads_clicks").select("*", { count: "exact", head: true }).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
+        supabase.from("leads_clicks").select("*", { count: "exact", head: true }).gte("created_at", prevFrom.toISOString()).lt("created_at", prevTo.toISOString()),
+        supabase.from("cta_clicks").select("*", { count: "exact", head: true }).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
+        supabase.from("leads_clicks").select("utm_source").gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
+      ]);
 
-      if (sales) {
-        const paid = sales.filter(s => s.status !== "refunded" && Number(s.amount_mzn) > 0);
-        setTotalSales(paid.length);
-        setTotalMzn(paid.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0));
+      setSales((curSales as Sale[]) || []);
+      setPrevSales((prSales as Sale[]) || []);
+      setTotalLeads(leadsCount || 0);
+      setPrevLeads(prevLeadsCount || 0);
+      setTotalCtas(ctaCount || 0);
 
-        const last7 = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - (6 - i));
-          return d.toISOString().split("T")[0];
-        });
-        setDailySales(last7.map((date) => ({
-          date: date.slice(5),
-          vendas: sales.filter((s) => s.created_at.startsWith(date) && s.status !== "refunded" && Number(s.amount_mzn) > 0).reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0),
-        })));
-      }
-
-      const { count } = await supabase
-        .from("leads_clicks")
-        .select("*", { count: "exact", head: true })
-        .gte("created_at", from)
-        .lte("created_at", to);
-      setTotalLeads(count || 0);
-
-      const { data: leads } = await supabase
-        .from("leads_clicks")
-        .select("utm_source")
-        .gte("created_at", from)
-        .lte("created_at", to);
+      // Daily series across the range (cap at 30 buckets)
+      const dayCount = Math.min(30, Math.max(7, Math.ceil(span / 86400000)));
+      const buckets = Array.from({ length: dayCount }, (_, i) => {
+        const d = new Date(to);
+        d.setDate(d.getDate() - (dayCount - 1 - i));
+        return d.toISOString().split("T")[0];
+      });
+      setDailySales(buckets.map((date) => ({
+        date: date.slice(5),
+        vendas: ((curSales as Sale[]) || [])
+          .filter((s) => s.created_at.startsWith(date) && s.status !== "refunded" && Number(s.amount_mzn) > 0)
+          .reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0),
+      })));
 
       if (leads) {
         const sourceMap: Record<string, number> = {};
@@ -133,25 +140,34 @@ export default function Index() {
           sourceMap[src] = (sourceMap[src] || 0) + 1;
         });
         setUtmSources(
-          Object.entries(sourceMap)
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
+          Object.entries(sourceMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
         );
       }
     };
 
-    fetchDashboard();
+    fetchAll();
 
     const channel = supabase
-      .channel("sales-realtime")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sales" }, () => fetchDashboard())
+      .channel(`dashboard-${crypto.randomUUID()}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sales" }, () => fetchAll())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [user, dateRange]);
 
-  const conversionRate = totalLeads > 0 ? ((totalSales / totalLeads) * 100).toFixed(1) : "0";
-  const avgTicket = totalSales > 0 ? (totalMzn / totalSales).toFixed(0) : "0";
+  // Current metrics
+  const paidSales = sales.filter((s) => s.status !== "refunded" && Number(s.amount_mzn) > 0);
+  const totalSales = paidSales.length;
+  const totalMzn = paidSales.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0);
+
+  const prevPaid = prevSales.filter((s) => s.status !== "refunded" && Number(s.amount_mzn) > 0);
+  const prevSalesCount = prevPaid.length;
+  const prevMzn = prevPaid.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0);
+
+  const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0;
+  const prevConversion = prevLeads > 0 ? (prevSalesCount / prevLeads) * 100 : 0;
+  const avgTicket = totalSales > 0 ? totalMzn / totalSales : 0;
+  const prevAvgTicket = prevSalesCount > 0 ? prevMzn / prevSalesCount : 0;
   const totalVisits = utmSources.reduce((s, u) => s + u.value, 0);
 
   return (
@@ -164,20 +180,20 @@ export default function Index() {
         <DateFilter value={dateRange} onChange={setDateRange} />
       </div>
 
+      <OnboardingChecklist />
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard title="Vendas (MZN)" value={`${totalMzn.toLocaleString("pt-MZ")} MT`} icon={DollarSign} />
-        <MetricCard title="Total Vendas" value={String(totalSales)} icon={ShoppingCart} />
-        <MetricCard title="Leads" value={String(totalLeads)} icon={Users} />
-        <MetricCard title="Conversão" value={`${conversionRate}%`} icon={Target} />
-        <MetricCard title="Ticket Médio" value={`${Number(avgTicket).toLocaleString("pt-MZ")} MT`} icon={TrendingUp} />
+        <MetricCard title="Vendas (MZN)" value={formatMzn(totalMzn)} icon={DollarSign} delta={pctDelta(totalMzn, prevMzn)} />
+        <MetricCard title="Total Vendas" value={String(totalSales)} icon={ShoppingCart} delta={pctDelta(totalSales, prevSalesCount)} />
+        <MetricCard title="Leads" value={String(totalLeads)} icon={Users} delta={pctDelta(totalLeads, prevLeads)} />
+        <MetricCard title="Conversão" value={`${conversionRate.toFixed(1)}%`} icon={Target} delta={pctDelta(conversionRate, prevConversion)} />
+        <MetricCard title="Ticket Médio" value={formatMzn(avgTicket)} icon={TrendingUp} delta={pctDelta(avgTicket, prevAvgTicket)} />
         <MetricCard title="ROI" value="—" icon={BarChart3} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="glass-card border-border">
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Vendas Diárias (MZN)</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="font-display text-lg">Vendas Diárias (MZN)</CardTitle></CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -194,30 +210,48 @@ export default function Index() {
         </Card>
 
         <Card className="glass-card border-border">
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Origem do Tráfego</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="font-display text-lg">Origem do Tráfego</CardTitle></CardHeader>
           <CardContent>
             <div className="h-64 overflow-y-auto">
               {utmSources.length > 0 ? (
                 <div className="space-y-1">
                   {utmSources.map((src, i) => (
-                    <SourceRow
-                      key={src.name}
-                      name={src.name}
-                      count={src.value}
-                      total={totalVisits}
-                      color={SOURCE_COLORS[i % SOURCE_COLORS.length]}
-                    />
+                    <SourceRow key={src.name} name={src.name} count={src.value} total={totalVisits} color={SOURCE_COLORS[i % SOURCE_COLORS.length]} />
                   ))}
                 </div>
               ) : (
-                <div className="flex h-full items-center justify-center text-muted-foreground">
-                  Sem dados de UTM ainda
-                </div>
+                <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de UTM ainda</div>
               )}
             </div>
           </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="glass-card border-border lg:col-span-1">
+          <CardHeader><CardTitle className="font-display text-lg">Top 3 Produtos</CardTitle></CardHeader>
+          <CardContent><TopProducts sales={sales} /></CardContent>
+        </Card>
+
+        <Card className="glass-card border-border lg:col-span-1">
+          <CardHeader><CardTitle className="font-display text-lg">Funil de Conversão</CardTitle></CardHeader>
+          <CardContent>
+            <Funnel
+              steps={[
+                { label: "Visitantes", value: totalLeads },
+                { label: "Cliques em CTA", value: totalCtas },
+                { label: "Vendas", value: totalSales },
+              ]}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border-border lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="font-display text-lg">Hora de Pico</CardTitle>
+            <p className="text-xs text-muted-foreground">Receita por dia × hora</p>
+          </CardHeader>
+          <CardContent><SalesHeatmap sales={sales} /></CardContent>
         </Card>
       </div>
     </div>
