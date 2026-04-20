@@ -1,75 +1,122 @@
 
 
-# Plano — Backend Robusto + Precisão Total
+# Melhorias gerais do App — NexusTrack
 
-## Problemas identificados na BD
+Mantém-se o plano anterior de tracking (#1 Pixel Health, #2 InitiateCheckout, #3 Retry CAPI, #4 Validação Pixel, #5 Atribuição). Abaixo, melhorias para o **resto do app**.
 
-- Existem vendas duplicadas: a Hotmart envia vários webhooks para a mesma transação (ex: PURCHASE_COMPLETE, depois PURCHASE_APPROVED) e o sistema cria uma nova venda para cada webhook
-- Não existe constraint UNIQUE no `transaction_id` — webhooks repetidos geram vendas duplicadas
-- Vendas com `amount=0` estão como "approved" em vez de "cancelled" (o comprador preencheu dados mas não pagou)
-- As vendas "cancelled" e "refunded" estão a ir todas para a aba "Reembolsos" sem distinção
-- O CTA mostra "unknown" porque `button_id` e `button_text` estão vazios para alguns botões
-- O lead attribution no webhook busca leads de TODOS os utilizadores, sem filtrar por `user_id`
+---
 
-## 1. Idempotência: UNIQUE constraint + UPSERT no webhook
+## A. Dashboard inteligente
 
-**Migração SQL:**
-- `ALTER TABLE sales ADD CONSTRAINT sales_transaction_id_unique UNIQUE (transaction_id);`
+**Hoje:** KPIs estáticos (vendas, leads, conversão, ticket médio) + gráfico 7 dias.
 
-**`supabase/functions/hotmart-webhook/index.ts`:**
-- Antes de inserir, verificar se já existe venda com o mesmo `transaction_id`
-- Se existir: atualizar apenas o `status` (ex: de "approved" para "refunded" ou "cancelled")
-- Se não existir: inserir como novo
-- Vendas com `original_amount <= 0` devem ter status `"cancelled"`, nunca `"approved"`
-- Só enviar notificação push e CAPI se for INSERT novo com status approved (não em updates)
+**Melhorias:**
+- **Comparação automática** vs período anterior ("+12% vs semana passada") em cada KPI
+- **Top 3 produtos** mais vendidos no período (com receita MZN)
+- **Hora de pico de vendas** (heatmap dia/hora) para optimizar campanhas
+- **Funil visual:** Visitantes → CTAs → Checkout → Vendas com % entre etapas
+- **Alerta inteligente:** se conversão cair >30% vs média histórica, badge vermelho
 
-## 2. Isolamento multi-tenant no webhook
+---
 
-**`supabase/functions/hotmart-webhook/index.ts`:**
-- Remover Strategy 2 (fallback para "único utilizador com hotmart_token") e Strategy 3 (fallback para qualquer utilizador)
-- Manter APENAS Strategy 1: match exato via `hottok` → `profiles.hotmart_token`
-- Se `hottok` não bater com nenhum perfil, retornar `{ ok: true, skipped: "no matching user" }` em vez de atribuir a qualquer utilizador
-- Lead attribution: filtrar leads apenas do `user_id` encontrado (não de todos os utilizadores)
+## B. Página de Leads — enriquecimento
 
-## 3. Distinção cancelled vs refunded
+**Hoje:** Lista de visitantes com fingerprint + geo.
 
-**`supabase/functions/hotmart-webhook/index.ts`:**
-- Hotmart envia eventos como `PURCHASE_CANCELED`, `PURCHASE_REFUNDED`, `PURCHASE_COMPLETE`, `PURCHASE_APPROVED`, `PURCHASE_PROTEST`, `PURCHASE_CHARGEBACK`
-- Mapear correctamente:
-  - `REFUND` / `CHARGEBACK` → `"refunded"`
-  - `CANCEL` / `PROTEST` → `"cancelled"`
-  - `COMPLETE` / `APPROVED` → `"approved"` (apenas se amount > 0)
-  - Amount = 0 → sempre `"cancelled"`
+**Melhorias:**
+- **Timeline por lead:** ver todas as visitas, CTAs clicados e (se converteu) a venda associada num único card expansível
+- **Score visual** (0-100) com barra de cor (vermelho→verde) em vez de só número
+- **Filtros:** por país, UTM source, score mínimo, "só leads que converteram"
+- **Exportar CSV** dos leads filtrados
+- **Marcar lead como "hot":** flag manual para acompanhamento
 
-**`src/pages/Sales.tsx`:**
-- Criar 3 abas: Vendas | Canceladas | Reembolsos
-- Vendas: `status === "approved" && amount_mzn > 0`
-- Canceladas: `status === "cancelled"` ou `amount_mzn <= 0`
-- Reembolsos: `status === "refunded"`
+---
 
-## 4. CTA "unknown" → fallback inteligente
+## C. Campanhas — performance real
 
-**`src/pages/Pages.tsx`:**
-- Na linha 84, quando `button_text` está vazio, usar o tagName do elemento (ex: "Link", "Botão") ou o `href` truncado em vez de "unknown"
+**Hoje:** Lista de campanhas + mapa mundial.
 
-**Tracking script (`getScript`):**
-- Melhorar captura do `button_text`: usar `el.innerText || el.textContent || el.title || el.getAttribute("aria-label") || el.tagName`
+**Melhorias:**
+- **ROAS por campanha:** receita MZN / gasto Meta Ads (puxar gasto via API Meta já integrada)
+- **CPA real:** gasto / nº de vendas atribuídas
+- **Ranking de campanhas:** ordenar por ROAS, vendas, ou conversão
+- **Detalhe de campanha:** clicar abre modal com gráfico diário + top UTMs + top países
 
-## 5. Estado do Pixel
+---
 
-Baseado nos dados do CAPI: o pixel está a receber eventos com sucesso (4 "sent", 2 "error"). Os 2 erros são porque o campo `currency` está em falta no `custom_data` quando `original_amount = 0`. Já está corrigido — as vendas com amount=0 passarão a ser "cancelled" e não enviarão CAPI.
+## D. Notificações — controlo fino
 
-## 6. Stories detection
+**Hoje:** Push para cada venda com texto fixo.
 
-O Instagram Stories não envia referrer identificável diferente do bio link — ambos usam `l.instagram.com`. A única forma fiável é o utilizador adicionar UTMs nos links dos stories (ex: `?utm_content=story`). O sistema já classifica `utm_content=story` como "Instagram — Story". Sem UTM, é impossível tecnicamente distinguir.
+**Melhorias:**
+- **Preferências por utilizador:** escolher receber push de [vendas / cancelamentos / reembolsos / metas atingidas]
+- **Notificação de meta:** quando atinge marco do progresso (50k, 100k, 500k MZN)
+- **Resumo diário às 22h:** "Hoje: X vendas, Y MZN, Z% vs ontem"
+- **Histórico filtrável** por tipo e data
 
-No entanto, no script de tracking actual, a detecção automática de `instagram.com` no referrer já existe (linha 152 do Pages.tsx). Vou melhorar para que quando detecte Instagram sem UTM, classifique como "Instagram" genérico em vez de "Direto".
+---
 
-## Ficheiros a editar
+## E. Settings — perfil completo
 
-1. **Migração SQL** — UNIQUE constraint em `transaction_id`
-2. **`supabase/functions/hotmart-webhook/index.ts`** — idempotência, isolamento multi-tenant, status correcto, amount=0 → cancelled
-3. **`src/pages/Sales.tsx`** — 3 abas (Vendas, Canceladas, Reembolsos)
-4. **`src/pages/Pages.tsx`** — CTA text fallback no script + no display
-5. **`supabase/functions/track/index.ts`** — minor: garantir Instagram sem UTM = "Instagram"
+**Hoje:** Apenas nome + empresa.
+
+**Melhorias:**
+- **Avatar/foto** (Supabase Storage)
+- **Fuso horário** (afecta filtros de data e resumos)
+- **Moeda preferida de exibição** (MZN padrão, mas opção USD/BRL/EUR)
+- **Mudar password** + **2FA opcional**
+- **Sessões activas** (ver dispositivos logados, revogar)
+- **Eliminar conta** (RGPD)
+
+---
+
+## F. Performance & PWA
+
+- **Lazy load** das páginas (`React.lazy` + `Suspense`) — reduz bundle inicial em ~40%
+- **Skeleton loaders** uniformes em todas as listas (hoje algumas mostram "Carregando...", outras nada)
+- **Offline mode básico:** dashboard mostra última versão em cache quando sem rede
+- **Optimização de imagens** do mapa mundial (SVG → comprimido)
+
+---
+
+## G. UX & Acessibilidade
+
+- **Atalhos de teclado:** `g d` → dashboard, `g s` → sales, `g l` → leads, `/` → focus search
+- **Estado vazio melhorado:** quando não há dados, ilustração + CTA claro ("Criar primeira página", "Conectar Hotmart")
+- **Toast unificado:** padronizar success (verde neon), error (vermelho), info (azul) com ícones
+- **Tooltips** em todos os KPIs explicando como são calculados
+- **Modo de foco:** botão para esconder sidebar e ver dashboard fullscreen em apresentações
+
+---
+
+## H. Segurança & Auditoria
+
+- **Audit log:** tabela `audit_log` regista ações sensíveis (mudança de token Hotmart, eliminação de campanha)
+- **Rate limiting** nas edge functions de tracking (proteger contra spam de leads falsos)
+- **Validação de domínio** ao criar página: verificar que o user é dono (meta tag ou DNS)
+- **Rotação de tokens:** alerta quando `hotmart_token` ou `meta_access_token` tem >90 dias
+
+---
+
+## I. Onboarding novo utilizador
+
+**Hoje:** Após signup, utilizador cai no dashboard vazio sem saber o que fazer.
+
+**Melhoria:**
+- **Wizard de 4 passos** após primeiro login:
+  1. Configurar Pixel Meta (ID + Token)
+  2. Conectar Hotmart (Token + copiar webhook URL)
+  3. Criar primeira página de tracking
+  4. Instalar script no site
+- Barra de progresso "Setup 2/4" no topo do dashboard até completar
+
+---
+
+## Recomendação de fases
+
+**Fase 1 (impacto imediato):** A (Dashboard), B (Leads timeline), I (Onboarding)
+**Fase 2 (retenção):** C (ROAS), D (Notificações), G (UX)
+**Fase 3 (escala):** E (Settings), F (Performance), H (Segurança)
+
+Diz-me **que letras queres avançar** (e se misturas com o plano de tracking #1-#5).
 
