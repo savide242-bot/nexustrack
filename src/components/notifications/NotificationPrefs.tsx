@@ -110,6 +110,16 @@ export function NotificationPrefs() {
         <Row icon={Trophy} title="Metas atingidas" desc="Quando atinges marcos de receita (50k, 100k, 500k MZN)" value={prefs.push_milestones} onChange={(v: boolean) => update({ push_milestones: v })} />
         <Row icon={CalendarClock} title="Resumo diário às 22h" desc="Total de vendas do dia vs dia anterior" value={prefs.daily_summary} onChange={(v: boolean) => update({ daily_summary: v })} />
 
+        {prefs.daily_summary && (
+          <div className="mt-2 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs">
+            {todaySummary ? (
+              <span className="text-primary">✓ Resumo de hoje enviado às {new Date(todaySummary.sent_at).toLocaleTimeString("pt-MZ", { hour: "2-digit", minute: "2-digit", timeZone: prefs.timezone })}</span>
+            ) : (
+              <span className="text-muted-foreground">⏳ Aguardando 22:00 ({prefs.timezone}) para enviar o resumo de hoje</span>
+            )}
+          </div>
+        )}
+
         <div className="pt-4 space-y-2">
           <Label className="text-xs text-muted-foreground">Fuso horário (afecta o resumo diário)</Label>
           <Select value={prefs.timezone} onValueChange={(v) => update({ timezone: v })}>
