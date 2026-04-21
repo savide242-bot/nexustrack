@@ -34,6 +34,7 @@ export function NotificationPrefs() {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT);
   const [loading, setLoading] = useState(true);
+  const [todaySummary, setTodaySummary] = useState<{ sent_at: string } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -45,6 +46,23 @@ export function NotificationPrefs() {
         .maybeSingle();
       if (data) setPrefs(data as Prefs);
       setLoading(false);
+
+      // Check if today's summary was already sent (in user's timezone)
+      const tz = (data as any)?.timezone || "Africa/Maputo";
+      const todayLocal = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const startUtc = new Date(`${todayLocal}T00:00:00Z`);
+      const offsetMin = (new Date().getTime() - new Date(new Date().toLocaleString("en-US", { timeZone: tz })).getTime()) / 60000;
+      startUtc.setMinutes(startUtc.getMinutes() + offsetMin);
+      const { data: log } = await supabase
+        .from("notifications_log")
+        .select("sent_at")
+        .eq("user_id", user.id)
+        .eq("title", "📊 Resumo do dia")
+        .gte("sent_at", startUtc.toISOString())
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (log) setTodaySummary(log as any);
     })();
   }, [user]);
 
@@ -91,6 +109,16 @@ export function NotificationPrefs() {
         <Row icon={RotateCcw} title="Cancelamentos e reembolsos" desc="Avisa quando uma venda é cancelada ou reembolsada" value={prefs.push_refunds} onChange={(v: boolean) => update({ push_refunds: v })} />
         <Row icon={Trophy} title="Metas atingidas" desc="Quando atinges marcos de receita (50k, 100k, 500k MZN)" value={prefs.push_milestones} onChange={(v: boolean) => update({ push_milestones: v })} />
         <Row icon={CalendarClock} title="Resumo diário às 22h" desc="Total de vendas do dia vs dia anterior" value={prefs.daily_summary} onChange={(v: boolean) => update({ daily_summary: v })} />
+
+        {prefs.daily_summary && (
+          <div className="mt-2 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs">
+            {todaySummary ? (
+              <span className="text-primary">✓ Resumo de hoje enviado às {new Date(todaySummary.sent_at).toLocaleTimeString("pt-MZ", { hour: "2-digit", minute: "2-digit", timeZone: prefs.timezone })}</span>
+            ) : (
+              <span className="text-muted-foreground">⏳ Aguardando 22:00 ({prefs.timezone}) para enviar o resumo de hoje</span>
+            )}
+          </div>
+        )}
 
         <div className="pt-4 space-y-2">
           <Label className="text-xs text-muted-foreground">Fuso horário (afecta o resumo diário)</Label>
