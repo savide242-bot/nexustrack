@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Megaphone, TrendingUp, Globe, Loader2, ChevronDown, ChevronUp, LogIn, Check } from "lucide-react";
+import { Megaphone, TrendingUp, Globe, Loader2, ChevronDown, ChevronUp, LogIn, Check, ArrowUpDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   ComposableMap,
@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CampaignDetailModal } from "@/components/campaigns/CampaignDetailModal";
+import { formatMzn } from "@/lib/format";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -90,6 +92,13 @@ export default function Campaigns() {
   const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // Attribution: real revenue per utm_campaign (lower-cased)
+  const [attribution, setAttribution] = useState<Record<string, { revenue: number; count: number }>>({});
+
+  // Sort + detail modal
+  const [sortBy, setSortBy] = useState<"roas" | "spend" | "purchases" | "ctr">("roas");
+  const [openCampaign, setOpenCampaign] = useState<FbCampaign | null>(null);
+
   // Load FB App ID from edge function
   useEffect(() => {
     const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
@@ -141,20 +150,29 @@ export default function Campaigns() {
     });
   }, [user]);
 
-  // Load sales for map + realtime
+  // Load sales for map + attribution + realtime
   const loadSales = useCallback(async () => {
-    const { data } = await supabase.from("sales").select("amount_mzn, status, leads_clicks(country)");
+    const { data } = await supabase.from("sales").select("amount_mzn, status, leads_clicks(country, utm_campaign)");
     if (!data) return;
     const map: Record<string, { count: number; total: number }> = {};
+    const attr: Record<string, { revenue: number; count: number }> = {};
     data.forEach((s: any) => {
       if (s.status === "refunded" || Number(s.amount_mzn) <= 0) return;
       const country = s.leads_clicks?.country;
-      if (!country) return;
-      if (!map[country]) map[country] = { count: 0, total: 0 };
-      map[country].count++;
-      map[country].total += Number(s.amount_mzn || 0);
+      if (country) {
+        if (!map[country]) map[country] = { count: 0, total: 0 };
+        map[country].count++;
+        map[country].total += Number(s.amount_mzn || 0);
+      }
+      const utmCampaign = (s.leads_clicks?.utm_campaign || "").toString().toLowerCase().trim();
+      if (utmCampaign) {
+        if (!attr[utmCampaign]) attr[utmCampaign] = { revenue: 0, count: 0 };
+        attr[utmCampaign].revenue += Number(s.amount_mzn || 0);
+        attr[utmCampaign].count++;
+      }
     });
     setSalesByCountry(map);
+    setAttribution(attr);
   }, []);
 
   useEffect(() => {
@@ -469,43 +487,83 @@ export default function Campaigns() {
         </>
       )}
 
-      {/* Campaigns table */}
+      {/* Campaigns table — sortable + clickable rows for ROAS detail */}
       {campaigns.length > 0 && (
         <Card className="glass-card border-border overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="px-4 pt-4 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Ordenar por:</span>
+            {(["roas", "spend", "purchases", "ctr"] as const).map((k) => (
+              <Button
+                key={k}
+                size="sm"
+                variant={sortBy === k ? "default" : "outline"}
+                className={sortBy === k ? "gradient-primary text-primary-foreground" : ""}
+                onClick={() => setSortBy(k)}
+              >
+                <ArrowUpDown className="h-3 w-3 mr-1" />
+                {k === "roas" ? "ROAS" : k === "spend" ? "Gasto" : k === "purchases" ? "Vendas" : "CTR"}
+              </Button>
+            ))}
+            <span className="text-xs text-muted-foreground ml-auto">Clica numa linha para ver atribuição real</span>
+          </div>
+          <div className="overflow-x-auto mt-3">
             <Table>
               <TableHeader>
                 <TableRow className="border-border">
                   <TableHead>Campanha</TableHead>
                   <TableHead className="text-right">Gasto</TableHead>
-                  <TableHead className="text-right">Impressões</TableHead>
                   <TableHead className="text-right">Cliques</TableHead>
                   <TableHead className="text-right">CTR</TableHead>
                   <TableHead className="text-right">CPC</TableHead>
-                  <TableHead className="text-right">Compras</TableHead>
+                  <TableHead className="text-right">Compras Meta</TableHead>
                   <TableHead className="text-right">CPA</TableHead>
                   <TableHead className="text-right">ROAS</TableHead>
+                  <TableHead className="text-right">Vendas reais</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {campaigns.map((c) => (
-                  <TableRow key={c.campaign_id} className="border-border">
-                    <TableCell className="font-medium max-w-[200px] truncate">{c.campaign_name}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">R$ {c.spend.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{c.impressions.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{c.clicks.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{c.ctr.toFixed(2)}%</TableCell>
-                    <TableCell className="text-right font-mono text-sm">R$ {c.cpc.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm text-primary">{c.purchases}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">R$ {c.cost_per_purchase.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm font-bold">{c.roas.toFixed(2)}x</TableCell>
-                  </TableRow>
-                ))}
+                {[...campaigns].sort((a, b) => (b[sortBy] as number) - (a[sortBy] as number)).map((c) => {
+                  const key = c.campaign_name.toLowerCase().trim();
+                  const realCount = attribution[key]?.count || 0;
+                  return (
+                    <TableRow
+                      key={c.campaign_id}
+                      className="border-border cursor-pointer hover:bg-secondary/20 transition-colors"
+                      onClick={() => setOpenCampaign(c)}
+                    >
+                      <TableCell className="font-medium max-w-[200px] truncate">{c.campaign_name}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">R$ {c.spend.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">{c.clicks.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">{c.ctr.toFixed(2)}%</TableCell>
+                      <TableCell className="text-right font-mono text-sm">R$ {c.cpc.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-sm text-primary">{c.purchases}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">R$ {c.cost_per_purchase.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-sm font-bold">{c.roas.toFixed(2)}x</TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {realCount > 0 ? (
+                          <span className="text-primary font-bold">{realCount}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
         </Card>
       )}
+
+      <CampaignDetailModal
+        campaign={openCampaign}
+        attributedRevenue={openCampaign ? (attribution[openCampaign.campaign_name.toLowerCase().trim()]?.revenue || 0) : 0}
+        attributedCount={openCampaign ? (attribution[openCampaign.campaign_name.toLowerCase().trim()]?.count || 0) : 0}
+        exchangeRateBrlToMzn={12}
+        open={!!openCampaign}
+        onOpenChange={(o) => !o && setOpenCampaign(null)}
+      />
+
 
       {/* === MAPA DE VENDAS (sempre visível) === */}
       <Card className="glass-card border-border">

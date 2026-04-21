@@ -12,20 +12,26 @@ import { Funnel } from "@/components/dashboard/Funnel";
 import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
 import { formatMzn, pctDelta } from "@/lib/format";
 
+import { InfoTooltip } from "@/components/InfoTooltip";
+
 interface MetricCardProps {
   title: string;
   value: string;
   icon: React.ElementType;
   delta?: number | null;
+  tip?: string;
 }
 
-function MetricCard({ title, value, icon: Icon, delta }: MetricCardProps) {
+function MetricCard({ title, value, icon: Icon, delta, tip }: MetricCardProps) {
   return (
     <Card className="glass-card border-border hover:neon-border transition-all duration-300">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-sm text-muted-foreground">{title}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm text-muted-foreground">{title}</p>
+              {tip && <InfoTooltip text={tip} />}
+            </div>
             <p className="mt-1 font-display text-2xl font-bold text-foreground truncate">{value}</p>
             {delta !== undefined && <div className="mt-1"><DeltaBadge delta={delta ?? null} /></div>}
           </div>
@@ -183,12 +189,12 @@ export default function Index() {
       <OnboardingChecklist />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard title="Vendas (MZN)" value={formatMzn(totalMzn)} icon={DollarSign} delta={pctDelta(totalMzn, prevMzn)} />
-        <MetricCard title="Total Vendas" value={String(totalSales)} icon={ShoppingCart} delta={pctDelta(totalSales, prevSalesCount)} />
-        <MetricCard title="Leads" value={String(totalLeads)} icon={Users} delta={pctDelta(totalLeads, prevLeads)} />
-        <MetricCard title="Conversão" value={`${conversionRate.toFixed(1)}%`} icon={Target} delta={pctDelta(conversionRate, prevConversion)} />
-        <MetricCard title="Ticket Médio" value={formatMzn(avgTicket)} icon={TrendingUp} delta={pctDelta(avgTicket, prevAvgTicket)} />
-        <MetricCard title="ROI" value="—" icon={BarChart3} />
+        <MetricCard title="Vendas (MZN)" value={formatMzn(totalMzn)} icon={DollarSign} delta={pctDelta(totalMzn, prevMzn)} tip="Receita total convertida em Meticais. Exclui reembolsos e cancelamentos." />
+        <MetricCard title="Total Vendas" value={String(totalSales)} icon={ShoppingCart} delta={pctDelta(totalSales, prevSalesCount)} tip="Número de vendas aprovadas/realizadas com valor > 0 no período." />
+        <MetricCard title="Leads" value={String(totalLeads)} icon={Users} delta={pctDelta(totalLeads, prevLeads)} tip="Visitantes únicos rastreados pelo pixel/script no período." />
+        <MetricCard title="Conversão" value={`${conversionRate.toFixed(1)}%`} icon={Target} delta={pctDelta(conversionRate, prevConversion)} tip="Vendas ÷ Leads. Mostra que percentagem dos visitantes comprou." />
+        <MetricCard title="Ticket Médio" value={formatMzn(avgTicket)} icon={TrendingUp} delta={pctDelta(avgTicket, prevAvgTicket)} tip="Receita média por venda (MZN ÷ nº vendas)." />
+        <MetricCard title="ROI" value="—" icon={BarChart3} tip="Retorno sobre investimento. Será calculado quando ligares uma conta Meta Ads em Campanhas." />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

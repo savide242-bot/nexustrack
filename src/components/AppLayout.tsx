@@ -5,6 +5,12 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RevenueProgress } from "@/components/RevenueProgress";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+
+function ShortcutsBridge() {
+  useKeyboardShortcuts();
+  return null;
+}
 
 function MobileHeader() {
   const { toggleSidebar } = useSidebar();
@@ -34,6 +40,7 @@ function DesktopHeader() {
 export function AppLayout() {
   return (
     <SidebarProvider>
+      <ShortcutsBridge />
       <div className="flex min-h-screen w-full">
         <AppSidebar />
         <main className="flex-1 overflow-auto">

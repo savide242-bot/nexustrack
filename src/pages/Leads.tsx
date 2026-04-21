@@ -13,6 +13,7 @@ import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFi
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ScoreBar } from "@/components/leads/ScoreBar";
 import { LeadDetailModal } from "@/components/leads/LeadDetailModal";
+import { EmptyState } from "@/components/EmptyState";
 import { downloadCSV } from "@/lib/format";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
@@ -192,12 +193,21 @@ export default function Leads() {
       </Card>
 
       {filtered.length === 0 ? (
-        <Card className="glass-card border-border">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Users className="mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">Nenhum lead corresponde aos filtros</p>
-          </CardContent>
-        </Card>
+        leads.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="Sem leads ainda"
+            description="Cria uma página em /pages e instala o script de tracking no teu site. Cada visitante aparecerá aqui com score, geo e timeline."
+            ctaLabel="Criar primeira página"
+            ctaHref="/pages"
+          />
+        ) : (
+          <EmptyState
+            icon={Users}
+            title="Nenhum lead corresponde aos filtros"
+            description="Ajusta o país, UTM source ou score mínimo no painel de filtros acima."
+          />
+        )
       ) : isMobile ? (
         <div className="space-y-3">
           {filtered.map((l) => {
