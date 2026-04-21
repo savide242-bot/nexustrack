@@ -282,6 +282,42 @@ export type Database = {
           },
         ]
       }
+      notification_prefs: {
+        Row: {
+          created_at: string
+          daily_summary: boolean
+          id: string
+          push_milestones: boolean
+          push_refunds: boolean
+          push_sales: boolean
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_summary?: boolean
+          id?: string
+          push_milestones?: boolean
+          push_refunds?: boolean
+          push_sales?: boolean
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_summary?: boolean
+          id?: string
+          push_milestones?: boolean
+          push_refunds?: boolean
+          push_sales?: boolean
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notifications_log: {
         Row: {
           body: string
