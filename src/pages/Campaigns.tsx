@@ -487,43 +487,83 @@ export default function Campaigns() {
         </>
       )}
 
-      {/* Campaigns table */}
+      {/* Campaigns table — sortable + clickable rows for ROAS detail */}
       {campaigns.length > 0 && (
         <Card className="glass-card border-border overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="px-4 pt-4 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Ordenar por:</span>
+            {(["roas", "spend", "purchases", "ctr"] as const).map((k) => (
+              <Button
+                key={k}
+                size="sm"
+                variant={sortBy === k ? "default" : "outline"}
+                className={sortBy === k ? "gradient-primary text-primary-foreground" : ""}
+                onClick={() => setSortBy(k)}
+              >
+                <ArrowUpDown className="h-3 w-3 mr-1" />
+                {k === "roas" ? "ROAS" : k === "spend" ? "Gasto" : k === "purchases" ? "Vendas" : "CTR"}
+              </Button>
+            ))}
+            <span className="text-xs text-muted-foreground ml-auto">Clica numa linha para ver atribuição real</span>
+          </div>
+          <div className="overflow-x-auto mt-3">
             <Table>
               <TableHeader>
                 <TableRow className="border-border">
                   <TableHead>Campanha</TableHead>
                   <TableHead className="text-right">Gasto</TableHead>
-                  <TableHead className="text-right">Impressões</TableHead>
                   <TableHead className="text-right">Cliques</TableHead>
                   <TableHead className="text-right">CTR</TableHead>
                   <TableHead className="text-right">CPC</TableHead>
-                  <TableHead className="text-right">Compras</TableHead>
+                  <TableHead className="text-right">Compras Meta</TableHead>
                   <TableHead className="text-right">CPA</TableHead>
                   <TableHead className="text-right">ROAS</TableHead>
+                  <TableHead className="text-right">Vendas reais</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {campaigns.map((c) => (
-                  <TableRow key={c.campaign_id} className="border-border">
-                    <TableCell className="font-medium max-w-[200px] truncate">{c.campaign_name}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">R$ {c.spend.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{c.impressions.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{c.clicks.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{c.ctr.toFixed(2)}%</TableCell>
-                    <TableCell className="text-right font-mono text-sm">R$ {c.cpc.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm text-primary">{c.purchases}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">R$ {c.cost_per_purchase.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm font-bold">{c.roas.toFixed(2)}x</TableCell>
-                  </TableRow>
-                ))}
+                {[...campaigns].sort((a, b) => (b[sortBy] as number) - (a[sortBy] as number)).map((c) => {
+                  const key = c.campaign_name.toLowerCase().trim();
+                  const realCount = attribution[key]?.count || 0;
+                  return (
+                    <TableRow
+                      key={c.campaign_id}
+                      className="border-border cursor-pointer hover:bg-secondary/20 transition-colors"
+                      onClick={() => setOpenCampaign(c)}
+                    >
+                      <TableCell className="font-medium max-w-[200px] truncate">{c.campaign_name}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">R$ {c.spend.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">{c.clicks.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">{c.ctr.toFixed(2)}%</TableCell>
+                      <TableCell className="text-right font-mono text-sm">R$ {c.cpc.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-sm text-primary">{c.purchases}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">R$ {c.cost_per_purchase.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-sm font-bold">{c.roas.toFixed(2)}x</TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {realCount > 0 ? (
+                          <span className="text-primary font-bold">{realCount}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
         </Card>
       )}
+
+      <CampaignDetailModal
+        campaign={openCampaign}
+        attributedRevenue={openCampaign ? (attribution[openCampaign.campaign_name.toLowerCase().trim()]?.revenue || 0) : 0}
+        attributedCount={openCampaign ? (attribution[openCampaign.campaign_name.toLowerCase().trim()]?.count || 0) : 0}
+        exchangeRateBrlToMzn={12}
+        open={!!openCampaign}
+        onOpenChange={(o) => !o && setOpenCampaign(null)}
+      />
+
 
       {/* === MAPA DE VENDAS (sempre visível) === */}
       <Card className="glass-card border-border">
