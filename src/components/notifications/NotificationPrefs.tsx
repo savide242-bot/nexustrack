@@ -34,6 +34,7 @@ export function NotificationPrefs() {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT);
   const [loading, setLoading] = useState(true);
+  const [todaySummary, setTodaySummary] = useState<{ sent_at: string } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -45,6 +46,23 @@ export function NotificationPrefs() {
         .maybeSingle();
       if (data) setPrefs(data as Prefs);
       setLoading(false);
+
+      // Check if today's summary was already sent (in user's timezone)
+      const tz = (data as any)?.timezone || "Africa/Maputo";
+      const todayLocal = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const startUtc = new Date(`${todayLocal}T00:00:00Z`);
+      const offsetMin = (new Date().getTime() - new Date(new Date().toLocaleString("en-US", { timeZone: tz })).getTime()) / 60000;
+      startUtc.setMinutes(startUtc.getMinutes() + offsetMin);
+      const { data: log } = await supabase
+        .from("notifications_log")
+        .select("sent_at")
+        .eq("user_id", user.id)
+        .eq("title", "📊 Resumo do dia")
+        .gte("sent_at", startUtc.toISOString())
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (log) setTodaySummary(log as any);
     })();
   }, [user]);
 
