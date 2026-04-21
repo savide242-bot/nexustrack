@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
     triggered++;
   }
 
-  return new Response(JSON.stringify({ ok: true, processed: prefs.length, triggered }), {
+  return new Response(JSON.stringify({ ok: true, processed: prefs.length, triggered, skipped }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
