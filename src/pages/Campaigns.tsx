@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Megaphone, TrendingUp, Globe, Loader2, ChevronDown, ChevronUp, LogIn, Check } from "lucide-react";
+import { Megaphone, TrendingUp, Globe, Loader2, ChevronDown, ChevronUp, LogIn, Check, ArrowUpDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   ComposableMap,
@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CampaignDetailModal } from "@/components/campaigns/CampaignDetailModal";
+import { formatMzn } from "@/lib/format";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -90,6 +92,13 @@ export default function Campaigns() {
   const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // Attribution: real revenue per utm_campaign (lower-cased)
+  const [attribution, setAttribution] = useState<Record<string, { revenue: number; count: number }>>({});
+
+  // Sort + detail modal
+  const [sortBy, setSortBy] = useState<"roas" | "spend" | "purchases" | "ctr">("roas");
+  const [openCampaign, setOpenCampaign] = useState<FbCampaign | null>(null);
+
   // Load FB App ID from edge function
   useEffect(() => {
     const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
@@ -141,20 +150,29 @@ export default function Campaigns() {
     });
   }, [user]);
 
-  // Load sales for map + realtime
+  // Load sales for map + attribution + realtime
   const loadSales = useCallback(async () => {
-    const { data } = await supabase.from("sales").select("amount_mzn, status, leads_clicks(country)");
+    const { data } = await supabase.from("sales").select("amount_mzn, status, leads_clicks(country, utm_campaign)");
     if (!data) return;
     const map: Record<string, { count: number; total: number }> = {};
+    const attr: Record<string, { revenue: number; count: number }> = {};
     data.forEach((s: any) => {
       if (s.status === "refunded" || Number(s.amount_mzn) <= 0) return;
       const country = s.leads_clicks?.country;
-      if (!country) return;
-      if (!map[country]) map[country] = { count: 0, total: 0 };
-      map[country].count++;
-      map[country].total += Number(s.amount_mzn || 0);
+      if (country) {
+        if (!map[country]) map[country] = { count: 0, total: 0 };
+        map[country].count++;
+        map[country].total += Number(s.amount_mzn || 0);
+      }
+      const utmCampaign = (s.leads_clicks?.utm_campaign || "").toString().toLowerCase().trim();
+      if (utmCampaign) {
+        if (!attr[utmCampaign]) attr[utmCampaign] = { revenue: 0, count: 0 };
+        attr[utmCampaign].revenue += Number(s.amount_mzn || 0);
+        attr[utmCampaign].count++;
+      }
     });
     setSalesByCountry(map);
+    setAttribution(attr);
   }, []);
 
   useEffect(() => {
