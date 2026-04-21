@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Bell, BellRing } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { NotificationPrefs } from "@/components/notifications/NotificationPrefs";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function Notifications() {
   const { user } = useAuth();
@@ -112,13 +114,14 @@ export default function Notifications() {
         )}
       </div>
 
+      <NotificationPrefs />
+
       {notifications.length === 0 ? (
-        <Card className="glass-card border-border">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Bell className="mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">Nenhuma notificação ainda</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Bell}
+          title="Sem notificações ainda"
+          description="Quando uma venda for processada vais receber um push e um registo aparece aqui. Garante que ativaste as notificações acima."
+        />
       ) : (
         <div className="space-y-3">
           {notifications.map((n) => (
