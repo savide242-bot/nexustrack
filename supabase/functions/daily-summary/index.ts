@@ -48,11 +48,25 @@ Deno.serve(async (req) => {
   }
 
   let triggered = 0;
+  let skipped = 0;
   for (const p of prefs) {
     const tz = p.timezone || "Africa/Maputo";
     if (localHour(tz) !== 22) continue;
 
     const { todayStart, yesterdayStart } = startOfLocalDayUtc(tz);
+
+    // Dedupe: skip if a summary was already logged today (local day) for this user
+    const { data: existing } = await supabase
+      .from("notifications_log")
+      .select("id")
+      .eq("user_id", p.user_id)
+      .eq("title", "📊 Resumo do dia")
+      .gte("sent_at", todayStart.toISOString())
+      .limit(1);
+    if (existing && existing.length > 0) {
+      skipped++;
+      continue;
+    }
 
     const [{ data: today }, { data: yest }] = await Promise.all([
       supabase.from("sales").select("amount_mzn, status")
