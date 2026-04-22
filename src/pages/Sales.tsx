@@ -32,7 +32,7 @@ export default function Sales() {
 
     const channel = supabase
       .channel("sales-page")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sales" }, () => fetchSales())
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => fetchSales())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
