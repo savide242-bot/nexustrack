@@ -460,58 +460,76 @@ export type Database = {
       sales: {
         Row: {
           amount_mzn: number | null
+          approved_at: string | null
           buyer_email: string | null
           buyer_name: string | null
           buyer_phone: string | null
           campaign_id: string | null
           created_at: string
           exchange_rate: number | null
+          first_seen_at: string | null
+          hotmart_event: string | null
           hotmart_payload: Json | null
           id: string
+          last_webhook_at: string | null
           lead_id: string | null
           original_amount: number
           original_currency: string
           platform: string
           product_name: string | null
+          sale_date: string | null
           status: string
+          status_updated_at: string | null
           transaction_id: string | null
           user_id: string | null
         }
         Insert: {
           amount_mzn?: number | null
+          approved_at?: string | null
           buyer_email?: string | null
           buyer_name?: string | null
           buyer_phone?: string | null
           campaign_id?: string | null
           created_at?: string
           exchange_rate?: number | null
+          first_seen_at?: string | null
+          hotmart_event?: string | null
           hotmart_payload?: Json | null
           id?: string
+          last_webhook_at?: string | null
           lead_id?: string | null
           original_amount: number
           original_currency?: string
           platform?: string
           product_name?: string | null
+          sale_date?: string | null
           status?: string
+          status_updated_at?: string | null
           transaction_id?: string | null
           user_id?: string | null
         }
         Update: {
           amount_mzn?: number | null
+          approved_at?: string | null
           buyer_email?: string | null
           buyer_name?: string | null
           buyer_phone?: string | null
           campaign_id?: string | null
           created_at?: string
           exchange_rate?: number | null
+          first_seen_at?: string | null
+          hotmart_event?: string | null
           hotmart_payload?: Json | null
           id?: string
+          last_webhook_at?: string | null
           lead_id?: string | null
           original_amount?: number
           original_currency?: string
           platform?: string
           product_name?: string | null
+          sale_date?: string | null
           status?: string
+          status_updated_at?: string | null
           transaction_id?: string | null
           user_id?: string | null
         }
@@ -562,6 +580,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      hotmart_to_timestamptz: { Args: { value: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "user"
