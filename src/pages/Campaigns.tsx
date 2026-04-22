@@ -24,6 +24,34 @@ import { CampaignDetailModal } from "@/components/campaigns/CampaignDetailModal"
 import { formatMzn } from "@/lib/format";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const BRL_TO_MZN = 12;
+
+function getPresetRange(preset: string) {
+  const now = new Date();
+  const end = new Date(now);
+  const start = new Date(now);
+  const startOfDay = (d: Date) => { d.setHours(0, 0, 0, 0); return d; };
+  const endOfDay = (d: Date) => { d.setHours(23, 59, 59, 999); return d; };
+
+  if (preset === "today") return { from: startOfDay(start), to: endOfDay(end) };
+  if (preset === "yesterday") {
+    start.setDate(start.getDate() - 1);
+    end.setDate(end.getDate() - 1);
+    return { from: startOfDay(start), to: endOfDay(end) };
+  }
+  if (preset === "this_month") {
+    start.setDate(1);
+    return { from: startOfDay(start), to: endOfDay(end) };
+  }
+  if (preset === "last_month") {
+    start.setMonth(start.getMonth() - 1, 1);
+    end.setDate(0);
+    return { from: startOfDay(start), to: endOfDay(end) };
+  }
+  const days = preset === "last_3d" ? 3 : preset === "last_14d" ? 14 : preset === "last_30d" ? 30 : 7;
+  start.setDate(start.getDate() - (days - 1));
+  return { from: startOfDay(start), to: endOfDay(end) };
+}
 
 // ISO_A2 to ISO_N3 mapping for matching world-atlas topology
 const COUNTRY_NAME_TO_ISO: Record<string, string> = {
@@ -94,6 +122,7 @@ export default function Campaigns() {
 
   // Attribution: real revenue per utm_campaign (lower-cased)
   const [attribution, setAttribution] = useState<Record<string, { revenue: number; count: number }>>({});
+  const [attributionSummary, setAttributionSummary] = useState({ attributedRevenue: 0, attributedCount: 0, organicRevenue: 0, organicCount: 0 });
 
   // Sort + detail modal
   const [sortBy, setSortBy] = useState<"roas" | "spend" | "purchases" | "ctr">("roas");
@@ -152,28 +181,43 @@ export default function Campaigns() {
 
   // Load sales for map + attribution + realtime
   const loadSales = useCallback(async () => {
-    const { data } = await (supabase.from("sales") as any).select("amount_mzn, status, sale_date, leads_clicks(country, utm_campaign)");
+    const { from, to } = getPresetRange(datePreset);
+    const { data } = await (supabase.from("sales") as any)
+      .select("amount_mzn, status, sale_date, leads_clicks(country, utm_campaign)")
+      .gte("sale_date", from.toISOString())
+      .lte("sale_date", to.toISOString());
     if (!data) return;
     const map: Record<string, { count: number; total: number }> = {};
     const attr: Record<string, { revenue: number; count: number }> = {};
+    let attributedRevenue = 0;
+    let attributedCount = 0;
+    let organicRevenue = 0;
+    let organicCount = 0;
     data.forEach((s: any) => {
       if (!["approved", "realized"].includes(s.status) || Number(s.amount_mzn) <= 0) return;
+      const revenue = Number(s.amount_mzn || 0);
       const country = s.leads_clicks?.country;
       if (country) {
         if (!map[country]) map[country] = { count: 0, total: 0 };
         map[country].count++;
-        map[country].total += Number(s.amount_mzn || 0);
+        map[country].total += revenue;
       }
       const utmCampaign = (s.leads_clicks?.utm_campaign || "").toString().toLowerCase().trim();
       if (utmCampaign) {
         if (!attr[utmCampaign]) attr[utmCampaign] = { revenue: 0, count: 0 };
-        attr[utmCampaign].revenue += Number(s.amount_mzn || 0);
+        attr[utmCampaign].revenue += revenue;
         attr[utmCampaign].count++;
+        attributedRevenue += revenue;
+        attributedCount++;
+      } else {
+        organicRevenue += revenue;
+        organicCount++;
       }
     });
     setSalesByCountry(map);
     setAttribution(attr);
-  }, []);
+    setAttributionSummary({ attributedRevenue, attributedCount, organicRevenue, organicCount });
+  }, [datePreset]);
 
   useEffect(() => {
     if (!user) return;
@@ -181,7 +225,7 @@ export default function Campaigns() {
 
     const channel = supabase
       .channel("campaigns-sales-realtime")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sales" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => {
         loadSales();
       })
       .subscribe();
@@ -297,6 +341,7 @@ export default function Campaigns() {
   const totalSpend = campaigns.reduce((a, c) => a + c.spend, 0);
   const totalPurchases = campaigns.reduce((a, c) => a + c.purchases, 0);
   const avgRoas = campaigns.length ? (campaigns.reduce((a, c) => a + c.roas, 0) / campaigns.length) : 0;
+  const realRoas = totalSpend > 0 ? attributionSummary.attributedRevenue / (totalSpend * BRL_TO_MZN) : 0;
 
   const maxSales = Math.max(...Object.values(salesByCountry).map(s => s.count), 1);
 
