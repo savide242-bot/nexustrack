@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
           .from("sales")
           .update({
             status,
-            approved_at: approvedAt,
+            ...(approvedAt ? { approved_at: approvedAt } : {}),
             status_updated_at: nowIso,
             hotmart_event: event,
             last_webhook_at: nowIso,
