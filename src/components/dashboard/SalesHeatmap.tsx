@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 
 interface Props {
-  /** Each item must have a `created_at` ISO string and `amount_mzn`. */
-  sales: { created_at: string; amount_mzn: number | string | null; status: string }[];
+  /** Each item must have the real sale date and `amount_mzn`. */
+  sales: { created_at: string; sale_date?: string | null; amount_mzn: number | string | null; status: string }[];
 }
 
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -13,10 +13,10 @@ export function SalesHeatmap({ sales }: Props) {
     const g: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
     let m = 0;
     for (const s of sales) {
-      if (s.status === "refunded") continue;
+      if (!["approved", "realized"].includes(s.status)) continue;
       const amt = Number(s.amount_mzn) || 0;
       if (amt <= 0) continue;
-      const d = new Date(s.created_at);
+      const d = new Date(s.sale_date || s.created_at);
       const day = d.getDay();
       const hour = d.getHours();
       g[day][hour] += amt;

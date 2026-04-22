@@ -78,10 +78,13 @@ function SourceRow({ name, count, total, color }: { name: string; count: number;
 
 interface Sale {
   created_at: string;
+  sale_date: string | null;
   amount_mzn: number | string | null;
   status: string;
   product_name: string | null;
 }
+
+const isRevenueSale = (s: Sale) => ["approved", "realized"].includes(s.status) && Number(s.amount_mzn) > 0;
 
 export default function Index() {
   const { user } = useAuth();
@@ -111,8 +114,8 @@ export default function Index() {
         { count: ctaCount },
         { data: leads },
       ] = await Promise.all([
-        supabase.from("sales").select("created_at, amount_mzn, status, product_name").gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
-        supabase.from("sales").select("created_at, amount_mzn, status, product_name").gte("created_at", prevFrom.toISOString()).lt("created_at", prevTo.toISOString()),
+        (supabase.from("sales") as any).select("created_at, sale_date, amount_mzn, status, product_name").gte("sale_date", from.toISOString()).lte("sale_date", to.toISOString()),
+        (supabase.from("sales") as any).select("created_at, sale_date, amount_mzn, status, product_name").gte("sale_date", prevFrom.toISOString()).lt("sale_date", prevTo.toISOString()),
         supabase.from("leads_clicks").select("*", { count: "exact", head: true }).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
         supabase.from("leads_clicks").select("*", { count: "exact", head: true }).gte("created_at", prevFrom.toISOString()).lt("created_at", prevTo.toISOString()),
         supabase.from("cta_clicks").select("*", { count: "exact", head: true }).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
@@ -135,7 +138,7 @@ export default function Index() {
       setDailySales(buckets.map((date) => ({
         date: date.slice(5),
         vendas: ((curSales as Sale[]) || [])
-          .filter((s) => s.created_at.startsWith(date) && s.status !== "refunded" && Number(s.amount_mzn) > 0)
+          .filter((s) => (s.sale_date || s.created_at).startsWith(date) && isRevenueSale(s))
           .reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0),
       })));
 
@@ -162,11 +165,11 @@ export default function Index() {
   }, [user, dateRange]);
 
   // Current metrics
-  const paidSales = sales.filter((s) => s.status !== "refunded" && Number(s.amount_mzn) > 0);
+  const paidSales = sales.filter(isRevenueSale);
   const totalSales = paidSales.length;
   const totalMzn = paidSales.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0);
 
-  const prevPaid = prevSales.filter((s) => s.status !== "refunded" && Number(s.amount_mzn) > 0);
+  const prevPaid = prevSales.filter(isRevenueSale);
   const prevSalesCount = prevPaid.length;
   const prevMzn = prevPaid.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0);
 

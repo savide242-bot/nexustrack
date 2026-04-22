@@ -69,21 +69,21 @@ Deno.serve(async (req) => {
     }
 
     const [{ data: today }, { data: yest }] = await Promise.all([
-      supabase.from("sales").select("amount_mzn, status")
+      supabase.from("sales").select("amount_mzn, status, sale_date")
         .eq("user_id", p.user_id)
-        .gte("created_at", todayStart.toISOString()),
-      supabase.from("sales").select("amount_mzn, status")
+        .gte("sale_date", todayStart.toISOString()),
+      supabase.from("sales").select("amount_mzn, status, sale_date")
         .eq("user_id", p.user_id)
-        .gte("created_at", yesterdayStart.toISOString())
-        .lt("created_at", todayStart.toISOString()),
+        .gte("sale_date", yesterdayStart.toISOString())
+        .lt("sale_date", todayStart.toISOString()),
     ]);
 
     const sumValid = (rows: any[] | null) =>
       (rows || [])
-        .filter((s) => s.status !== "refunded" && Number(s.amount_mzn) > 0)
+        .filter((s) => ["approved", "realized"].includes(s.status) && Number(s.amount_mzn) > 0)
         .reduce((acc, s) => acc + Number(s.amount_mzn), 0);
     const countValid = (rows: any[] | null) =>
-      (rows || []).filter((s) => s.status !== "refunded" && Number(s.amount_mzn) > 0).length;
+      (rows || []).filter((s) => ["approved", "realized"].includes(s.status) && Number(s.amount_mzn) > 0).length;
 
     const todayTotal = sumValid(today);
     const yestTotal = sumValid(yest);

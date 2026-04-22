@@ -20,19 +20,19 @@ export default function Sales() {
     const to = dateRange.to.toISOString();
 
     const fetchSales = async () => {
-      const { data } = await supabase
+      const { data } = await (supabase
         .from("sales")
-        .select("*, leads_clicks(country, city, utm_source)")
-        .gte("created_at", from)
-        .lte("created_at", to)
-        .order("created_at", { ascending: false });
+        .select("*, leads_clicks(country, city, utm_source)") as any)
+        .gte("sale_date", from)
+        .lte("sale_date", to)
+        .order("sale_date", { ascending: false });
       if (data) setSales(data);
     };
     fetchSales();
 
     const channel = supabase
       .channel("sales-page")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sales" }, () => fetchSales())
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => fetchSales())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -70,7 +70,8 @@ export default function Sales() {
               <TableHead>País</TableHead>
               <TableHead>Fonte</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Data</TableHead>
+              <TableHead>Venda em</TableHead>
+              <TableHead>Aprovada em</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -90,7 +91,8 @@ export default function Sales() {
                   <TableCell className="text-sm">{lead?.country || "—"}</TableCell>
                   <TableCell className="text-sm">{lead?.utm_source || "—"}</TableCell>
                   <TableCell><Badge className={statusColor(s.status)}>{s.status}</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{new Date(s.created_at).toLocaleDateString("pt-MZ")}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{new Date(s.sale_date || s.created_at).toLocaleDateString("pt-MZ")}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{s.approved_at ? new Date(s.approved_at).toLocaleDateString("pt-MZ") : "—"}</TableCell>
                 </TableRow>
               );
             })}
