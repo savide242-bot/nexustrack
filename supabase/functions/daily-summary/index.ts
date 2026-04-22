@@ -15,17 +15,24 @@ function localHour(tz: string): number {
   }
 }
 
-function startOfLocalDayUtc(tz: string): { todayStart: Date; yesterdayStart: Date } {
-  // Build "YYYY-MM-DD 00:00" in tz, then resolve to UTC instant
-  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
-  const today = fmt.format(new Date()); // YYYY-MM-DD
-  const todayStart = new Date(`${today}T00:00:00Z`);
-  // approximate offset
-  const offsetMin = (new Date().getTime() - new Date(new Date().toLocaleString("en-US", { timeZone: tz })).getTime()) / 60000;
-  todayStart.setMinutes(todayStart.getMinutes() + offsetMin);
-  const yesterdayStart = new Date(todayStart);
-  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-  return { todayStart, yesterdayStart };
+function zonedStartOfDayUtc(date: Date, tz: string): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value || 0);
+  const utcGuess = new Date(Date.UTC(get("year"), get("month") - 1, get("day"), 0, 0, 0));
+  const localAtGuess = new Date(utcGuess.toLocaleString("en-US", { timeZone: tz }));
+  return new Date(utcGuess.getTime() - (localAtGuess.getTime() - utcGuess.getTime()));
+}
+
+function startOfLocalDayUtc(tz: string): { todayStart: Date; yesterdayStart: Date; tomorrowStart: Date } {
+  const todayStart = zonedStartOfDayUtc(new Date(), tz);
+  const yesterdayStart = zonedStartOfDayUtc(new Date(todayStart.getTime() - 12 * 60 * 60 * 1000), tz);
+  const tomorrowStart = zonedStartOfDayUtc(new Date(todayStart.getTime() + 36 * 60 * 60 * 1000), tz);
+  return { todayStart, yesterdayStart, tomorrowStart };
 }
 
 Deno.serve(async (req) => {
@@ -53,7 +60,7 @@ Deno.serve(async (req) => {
     const tz = p.timezone || "Africa/Maputo";
     if (localHour(tz) !== 22) continue;
 
-    const { todayStart, yesterdayStart } = startOfLocalDayUtc(tz);
+    const { todayStart, yesterdayStart, tomorrowStart } = startOfLocalDayUtc(tz);
 
     // Dedupe: skip if a summary was already logged today (local day) for this user
     const { data: existing } = await supabase
@@ -71,7 +78,8 @@ Deno.serve(async (req) => {
     const [{ data: today }, { data: yest }] = await Promise.all([
       supabase.from("sales").select("amount_mzn, status, sale_date")
         .eq("user_id", p.user_id)
-        .gte("sale_date", todayStart.toISOString()),
+        .gte("sale_date", todayStart.toISOString())
+        .lt("sale_date", tomorrowStart.toISOString()),
       supabase.from("sales").select("amount_mzn, status, sale_date")
         .eq("user_id", p.user_id)
         .gte("sale_date", yesterdayStart.toISOString())

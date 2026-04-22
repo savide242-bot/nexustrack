@@ -28,7 +28,7 @@ interface Lead {
 }
 
 interface CTAClick { id: string; button_text: string | null; page_url: string | null; created_at: string; }
-interface Sale { id: string; amount_mzn: number | null; product_name: string | null; status: string; created_at: string; }
+interface Sale { id: string; amount_mzn: number | null; product_name: string | null; status: string; created_at: string; sale_date: string | null; approved_at: string | null; }
 
 type Event =
   | { kind: "visit"; date: string; data: Lead }
@@ -71,13 +71,13 @@ export function LeadDetailModal({ leadId, open, onOpenChange }: Props) {
       const [{ data: visits }, { data: ctas }, { data: sales }] = await Promise.all([
         visitsQuery.order("created_at", { ascending: false }).limit(50),
         supabase.from("cta_clicks").select("*").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(50),
-        supabase.from("sales").select("*").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(20),
+        supabase.from("sales").select("*").eq("lead_id", leadId).order("sale_date", { ascending: false }).limit(20),
       ]);
 
       const all: Event[] = [];
       (visits || []).forEach((v) => all.push({ kind: "visit", date: v.created_at, data: v as Lead }));
       (ctas || []).forEach((c) => all.push({ kind: "cta", date: c.created_at, data: c as CTAClick }));
-      (sales || []).forEach((s) => all.push({ kind: "sale", date: s.created_at, data: s as Sale }));
+      (sales || []).forEach((s) => all.push({ kind: "sale", date: s.sale_date || s.created_at, data: s as Sale }));
       all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       setEvents(all);
@@ -154,6 +154,7 @@ export function LeadDetailModal({ leadId, open, onOpenChange }: Props) {
                           <span className="text-primary font-medium">
                             Venda: {formatMzn(Number((e.data as Sale).amount_mzn) || 0)} — {(e.data as Sale).product_name || "—"}
                             <Badge className="ml-2" variant="outline">{(e.data as Sale).status}</Badge>
+                            {(e.data as Sale).approved_at && <span className="ml-2 text-xs text-muted-foreground">aprovada {new Date((e.data as Sale).approved_at!).toLocaleDateString("pt-MZ")}</span>}
                           </span>
                         )}
                       </div>
