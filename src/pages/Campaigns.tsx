@@ -529,6 +529,29 @@ export default function Campaigns() {
               </CardContent>
             </Card>
           </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="glass-card border-border">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Receita atribuída por UTM</p>
+                <p className="mt-1 font-display text-xl font-bold text-primary">{formatMzn(attributionSummary.attributedRevenue)}</p>
+                <p className="text-xs text-muted-foreground">{attributionSummary.attributedCount} vendas com campanha identificada</p>
+              </CardContent>
+            </Card>
+            <Card className="glass-card border-border">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Receita orgânica/sem UTM</p>
+                <p className="mt-1 font-display text-xl font-bold text-foreground">{formatMzn(attributionSummary.organicRevenue)}</p>
+                <p className="text-xs text-muted-foreground">{attributionSummary.organicCount} vendas sem campanha atribuída</p>
+              </CardContent>
+            </Card>
+            <Card className="glass-card border-border">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">ROAS real estimado</p>
+                <p className="mt-1 font-display text-xl font-bold text-primary">{realRoas.toFixed(2)}x</p>
+                <p className="text-xs text-muted-foreground">Usa vendas reais por sale_date no mesmo período</p>
+              </CardContent>
+            </Card>
+          </div>
         </>
       )}
 
@@ -564,12 +587,15 @@ export default function Campaigns() {
                   <TableHead className="text-right">CPA</TableHead>
                   <TableHead className="text-right">ROAS</TableHead>
                   <TableHead className="text-right">Vendas reais</TableHead>
+                  <TableHead className="text-right">ROAS real</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {[...campaigns].sort((a, b) => (b[sortBy] as number) - (a[sortBy] as number)).map((c) => {
                   const key = c.campaign_name.toLowerCase().trim();
                   const realCount = attribution[key]?.count || 0;
+                  const realRevenue = attribution[key]?.revenue || 0;
+                  const realCampaignRoas = c.spend > 0 ? realRevenue / (c.spend * BRL_TO_MZN) : 0;
                   return (
                     <TableRow
                       key={c.campaign_id}
@@ -591,6 +617,7 @@ export default function Campaigns() {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-bold text-primary">{realCampaignRoas.toFixed(2)}x</TableCell>
                     </TableRow>
                   );
                 })}
@@ -604,7 +631,7 @@ export default function Campaigns() {
         campaign={openCampaign}
         attributedRevenue={openCampaign ? (attribution[openCampaign.campaign_name.toLowerCase().trim()]?.revenue || 0) : 0}
         attributedCount={openCampaign ? (attribution[openCampaign.campaign_name.toLowerCase().trim()]?.count || 0) : 0}
-        exchangeRateBrlToMzn={12}
+        exchangeRateBrlToMzn={BRL_TO_MZN}
         open={!!openCampaign}
         onOpenChange={(o) => !o && setOpenCampaign(null)}
       />
