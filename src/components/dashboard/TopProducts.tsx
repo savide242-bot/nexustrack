@@ -8,7 +8,7 @@ interface Props {
 export function TopProducts({ sales }: Props) {
   const map = new Map<string, { revenue: number; count: number }>();
   for (const s of sales) {
-    if (s.status === "refunded") continue;
+    if (!["approved", "realized"].includes(s.status)) continue;
     const amt = Number(s.amount_mzn) || 0;
     if (amt <= 0) continue;
     const name = s.product_name || "Sem nome";
