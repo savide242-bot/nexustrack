@@ -15,6 +15,39 @@ function mapStatus(event: string, amount: number): string {
   return "pending";
 }
 
+function parseHotmartDate(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const raw = String(value).trim();
+  const numeric = Number(raw);
+  const date = /^\d{13}$/.test(raw)
+    ? new Date(numeric)
+    : /^\d{10}$/.test(raw)
+      ? new Date(numeric * 1000)
+      : new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function extractSaleDate(payload: any, purchase: any): string {
+  return parseHotmartDate(purchase.order_date) ||
+    parseHotmartDate(purchase.purchase_date) ||
+    parseHotmartDate(purchase.date) ||
+    parseHotmartDate(payload.data?.purchase?.order_date) ||
+    parseHotmartDate(payload.data?.purchase?.purchase_date) ||
+    parseHotmartDate(payload.data?.purchase?.date) ||
+    parseHotmartDate(payload.creation_date) ||
+    parseHotmartDate(payload.data?.creation_date) ||
+    new Date().toISOString();
+}
+
+function extractApprovedAt(payload: any, purchase: any, event: string): string | null {
+  const explicit = parseHotmartDate(purchase.approved_date) ||
+    parseHotmartDate(purchase.approval_date) ||
+    parseHotmartDate(payload.data?.purchase?.approved_date) ||
+    parseHotmartDate(payload.data?.purchase?.approval_date);
+  if (explicit) return explicit;
+  return event.toUpperCase().includes("APPROVED") ? (parseHotmartDate(payload.event_date) || new Date().toISOString()) : null;
+}
+
 function shouldUpdateStatus(currentStatus: string, nextStatus: string): boolean {
   if (currentStatus === nextStatus) return false;
   if (currentStatus === "refunded") return false;
@@ -63,6 +96,9 @@ Deno.serve(async (req) => {
     const transactionId = purchase.transaction || "";
     const productName = product.name || "";
     const status = mapStatus(event, originalAmount);
+    const saleDate = extractSaleDate(payload, purchase);
+    const approvedAt = extractApprovedAt(payload, purchase, event);
+    const nowIso = new Date().toISOString();
 
     console.log("Hotmart webhook received", {
       event,
@@ -172,7 +208,7 @@ Deno.serve(async (req) => {
     // IDEMPOTENCY: Check if sale already exists
     const { data: existingSale } = await supabase
       .from("sales")
-      .select("id, status")
+      .select("id, status, sale_date")
       .eq("transaction_id", finalTransactionId)
       .maybeSingle();
 
@@ -180,10 +216,22 @@ Deno.serve(async (req) => {
       if (shouldUpdateStatus(existingSale.status, status)) {
         await supabase
           .from("sales")
-          .update({ status, hotmart_payload: payload })
+          .update({
+            status,
+            approved_at: approvedAt,
+            status_updated_at: nowIso,
+            hotmart_event: event,
+            last_webhook_at: nowIso,
+            hotmart_payload: payload,
+          })
+          .eq("id", existingSale.id);
+      } else {
+        await supabase
+          .from("sales")
+          .update({ hotmart_event: event, last_webhook_at: nowIso, hotmart_payload: payload })
           .eq("id", existingSale.id);
       }
-      return new Response(JSON.stringify({ ok: true, updated: true, sale_id: existingSale.id }), {
+      return new Response(JSON.stringify({ ok: true, updated: true, sale_id: existingSale.id, sale_date: existingSale.sale_date }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -202,6 +250,12 @@ Deno.serve(async (req) => {
       amount_mzn: amountMzn,
       exchange_rate: exchangeRate,
       status,
+      sale_date: saleDate,
+      approved_at: approvedAt,
+      status_updated_at: nowIso,
+      hotmart_event: event,
+      first_seen_at: nowIso,
+      last_webhook_at: nowIso,
       platform: "hotmart",
       transaction_id: finalTransactionId,
       hotmart_payload: payload,
@@ -209,8 +263,10 @@ Deno.serve(async (req) => {
 
     if (saleErr) throw saleErr;
 
-    // Only send notifications + CAPI when a NEW sale enters the funnel
-    if ((status === "realized" || status === "approved") && userId) {
+    // Only notify/CAPI for genuinely new, recent sales. Late approvals update status only.
+    const saleAgeMs = Date.now() - new Date(saleDate).getTime();
+    const isRecentSale = saleAgeMs >= 0 && saleAgeMs <= 24 * 60 * 60 * 1000;
+    if ((status === "realized" || status === "approved") && userId && isRecentSale) {
       await supabase.from("notifications_log").insert({
         user_id: userId,
         sale_id: sale.id,
@@ -230,6 +286,7 @@ Deno.serve(async (req) => {
             user_id: userId,
             title: "💰 Nova venda!",
             body: `${buyerName || "Alguém"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
+              kind: "sale",
           }),
         });
       } catch (pushErr) {
