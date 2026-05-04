@@ -164,19 +164,22 @@ export default function Campaigns() {
     document.body.appendChild(script);
   }, [fbAppId]);
 
-  // Load existing config
+  // Load existing config (FB ad account from profile, token from vault)
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles").select("meta_access_token, fb_ad_account_id").eq("user_id", user.id).single().then(({ data }) => {
-      if (data) {
-        const d = data as any;
-        if (d.meta_access_token && d.fb_ad_account_id) {
-          setFbConnected(true);
-          setLongLivedToken(d.meta_access_token);
-          setSelectedAccount(d.fb_ad_account_id);
-        }
+    (async () => {
+      const [{ data: profile }, vault] = await Promise.all([
+        supabase.from("profiles").select("fb_ad_account_id").eq("user_id", user.id).maybeSingle(),
+        supabase.functions.invoke("secrets-vault", { body: { action: "preview", kind: "meta_access_token" } }),
+      ]);
+      const tokenExists = !!(vault.data as any)?.exists;
+      const accountId = (profile as any)?.fb_ad_account_id || "";
+      if (accountId && tokenExists) {
+        setFbConnected(true);
+        setSelectedAccount(accountId);
+        // longLivedToken kept empty client-side; only the vault holds it
       }
-    });
+    })();
   }, [user]);
 
   // Load sales for map + attribution + realtime
@@ -291,46 +294,44 @@ export default function Campaigns() {
     }
   };
 
-  // Save selected ad account
+  // Save selected ad account (token goes to vault, account id to profile)
   const handleSelectAccount = async (accountId: string) => {
     if (!user) return;
     setSelectedAccount(accountId);
 
-    const { error } = await (supabase.from("profiles") as any).update({
-      meta_access_token: longLivedToken,
-      fb_ad_account_id: accountId,
-    }).eq("user_id", user.id);
-
-    if (error) {
-      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      if (longLivedToken) {
+        const { error: vErr } = await supabase.functions.invoke("secrets-vault", {
+          body: { action: "set", kind: "meta_access_token", value: longLivedToken },
+        });
+        if (vErr) throw vErr;
+      }
+      const { error } = await supabase.from("profiles").update({ fb_ad_account_id: accountId }).eq("user_id", user.id);
+      if (error) throw error;
       setFbConnected(true);
       toast({ title: "Conta de anúncios conectada!" });
+    } catch (e: any) {
+      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
     }
   };
 
-  // Fetch ads
+  // Fetch ads (server reads token from vault)
   const fetchMetaAds = async () => {
-    if (!longLivedToken || !selectedAccount) {
+    if (!selectedAccount) {
       toast({ title: "Conecte a sua conta Facebook primeiro", variant: "destructive" });
       return;
     }
     setLoadingAds(true);
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const res = await fetch(`https://${projectId}.supabase.co/functions/v1/facebook-ads`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: longLivedToken, ad_account_id: selectedAccount, date_preset: datePreset }),
+      const { data, error } = await supabase.functions.invoke("facebook-ads", {
+        body: { ad_account_id: selectedAccount, date_preset: datePreset },
       });
-      const data = await res.json();
-      if (data.error) {
-        toast({ title: "Erro Meta Ads", description: data.error, variant: "destructive" });
-      } else {
-        setCampaigns(data.campaigns || []);
-        if ((data.campaigns || []).length === 0) {
-          toast({ title: "Nenhuma campanha encontrada neste período" });
-        }
+      if (error) throw error;
+      const d = data as any;
+      if (d?.error) toast({ title: "Erro Meta Ads", description: d.error, variant: "destructive" });
+      else {
+        setCampaigns(d?.campaigns || []);
+        if ((d?.campaigns || []).length === 0) toast({ title: "Nenhuma campanha encontrada neste período" });
       }
     } catch (e: any) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
