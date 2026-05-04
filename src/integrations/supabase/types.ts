@@ -14,20 +14,49 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          ip: string | null
+          metadata: Json | null
+          target: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          ip?: string | null
+          metadata?: Json | null
+          target?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          ip?: string | null
+          metadata?: Json | null
+          target?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       campaigns: {
         Row: {
           created_at: string
           domain: string | null
-          fb_access_token: string | null
           fb_ad_account_id: string | null
           google_ads_id: string | null
-          hotmart_token: string | null
           id: string
           is_active: boolean
-          meta_access_token: string | null
           meta_pixel_id: string | null
           name: string
-          tiktok_access_token: string | null
           tiktok_pixel_id: string | null
           updated_at: string
           user_id: string
@@ -35,16 +64,12 @@ export type Database = {
         Insert: {
           created_at?: string
           domain?: string | null
-          fb_access_token?: string | null
           fb_ad_account_id?: string | null
           google_ads_id?: string | null
-          hotmart_token?: string | null
           id?: string
           is_active?: boolean
-          meta_access_token?: string | null
           meta_pixel_id?: string | null
           name: string
-          tiktok_access_token?: string | null
           tiktok_pixel_id?: string | null
           updated_at?: string
           user_id: string
@@ -52,16 +77,12 @@ export type Database = {
         Update: {
           created_at?: string
           domain?: string | null
-          fb_access_token?: string | null
           fb_ad_account_id?: string | null
           google_ads_id?: string | null
-          hotmart_token?: string | null
           id?: string
           is_active?: boolean
-          meta_access_token?: string | null
           meta_pixel_id?: string | null
           name?: string
-          tiktok_access_token?: string | null
           tiktok_pixel_id?: string | null
           updated_at?: string
           user_id?: string
@@ -397,9 +418,7 @@ export type Database = {
           created_at: string
           fb_ad_account_id: string | null
           full_name: string | null
-          hotmart_token: string | null
           id: string
-          meta_access_token: string | null
           meta_pixel_id: string | null
           updated_at: string
           user_id: string
@@ -409,9 +428,7 @@ export type Database = {
           created_at?: string
           fb_ad_account_id?: string | null
           full_name?: string | null
-          hotmart_token?: string | null
           id?: string
-          meta_access_token?: string | null
           meta_pixel_id?: string | null
           updated_at?: string
           user_id: string
@@ -421,9 +438,7 @@ export type Database = {
           created_at?: string
           fb_ad_account_id?: string | null
           full_name?: string | null
-          hotmart_token?: string | null
           id?: string
-          meta_access_token?: string | null
           meta_pixel_id?: string | null
           updated_at?: string
           user_id?: string
@@ -454,6 +469,24 @@ export type Database = {
           id?: string
           p256dh?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      rate_limits: {
+        Row: {
+          count: number
+          key: string
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          key: string
+          window_start: string
+        }
+        Update: {
+          count?: number
+          key?: string
+          window_start?: string
         }
         Relationships: []
       }
@@ -568,6 +601,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_secrets: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          updated_at: string
+          user_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          updated_at?: string
+          user_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          updated_at?: string
+          user_id?: string
+          value?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -580,7 +640,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      has_secret: { Args: { _kind: string }; Returns: boolean }
       hotmart_to_timestamptz: { Args: { value: string }; Returns: string }
+      list_my_secret_kinds: {
+        Args: never
+        Returns: {
+          is_set: boolean
+          kind: string
+          updated_at: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "user"
