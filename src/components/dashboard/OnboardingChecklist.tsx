@@ -27,30 +27,32 @@ export function OnboardingChecklist() {
     let cancelled = false;
 
     (async () => {
-      const [{ data: profile }, { count: pageCount }, { count: leadCount }] = await Promise.all([
+      const [{ data: profile }, { data: secretKinds }, { count: pageCount }, { count: leadCount }] = await Promise.all([
         supabase
           .from("profiles")
-          .select("meta_pixel_id, meta_access_token, hotmart_token")
+          .select("meta_pixel_id")
           .eq("user_id", user.id)
           .maybeSingle(),
+        supabase.rpc("list_my_secret_kinds"),
         supabase.from("pages").select("*", { count: "exact", head: true }).eq("user_id", user.id),
         supabase.from("leads_clicks").select("*", { count: "exact", head: true }).limit(1),
       ]);
 
       if (cancelled) return;
+      const kinds = new Set((secretKinds as any[] | null)?.map((s) => s.kind) || []);
 
       const next: Step[] = [
         {
           key: "pixel",
           label: "Configurar Pixel Meta + CAPI",
           to: "/tracking",
-          done: !!(profile?.meta_pixel_id && profile?.meta_access_token),
+          done: !!(profile?.meta_pixel_id && kinds.has("meta_access_token")),
         },
         {
           key: "hotmart",
           label: "Conectar Hotmart (token + webhook)",
           to: "/integrations",
-          done: !!profile?.hotmart_token,
+          done: kinds.has("hotmart_token"),
         },
         {
           key: "page",
