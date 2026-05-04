@@ -315,28 +315,23 @@ export default function Campaigns() {
     }
   };
 
-  // Fetch ads
+  // Fetch ads (server reads token from vault)
   const fetchMetaAds = async () => {
-    if (!longLivedToken || !selectedAccount) {
+    if (!selectedAccount) {
       toast({ title: "Conecte a sua conta Facebook primeiro", variant: "destructive" });
       return;
     }
     setLoadingAds(true);
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const res = await fetch(`https://${projectId}.supabase.co/functions/v1/facebook-ads`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: longLivedToken, ad_account_id: selectedAccount, date_preset: datePreset }),
+      const { data, error } = await supabase.functions.invoke("facebook-ads", {
+        body: { ad_account_id: selectedAccount, date_preset: datePreset },
       });
-      const data = await res.json();
-      if (data.error) {
-        toast({ title: "Erro Meta Ads", description: data.error, variant: "destructive" });
-      } else {
-        setCampaigns(data.campaigns || []);
-        if ((data.campaigns || []).length === 0) {
-          toast({ title: "Nenhuma campanha encontrada neste período" });
-        }
+      if (error) throw error;
+      const d = data as any;
+      if (d?.error) toast({ title: "Erro Meta Ads", description: d.error, variant: "destructive" });
+      else {
+        setCampaigns(d?.campaigns || []);
+        if ((d?.campaigns || []).length === 0) toast({ title: "Nenhuma campanha encontrada neste período" });
       }
     } catch (e: any) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });

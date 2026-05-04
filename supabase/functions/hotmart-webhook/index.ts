@@ -123,29 +123,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ONLY Strategy 1: strict match via hottok → profiles.hotmart_token
+    // Strict tenant match via vault: hottok value -> user_id
     const hottok = headerHottok || payload.hottok || payload.data?.hottok || "";
     let campaignId: string | null = null;
     let userId: string | null = null;
     let leadId: string | null = null;
 
     if (hottok) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .eq("hotmart_token", hottok)
-        .single();
-      if (profile) userId = profile.user_id;
-
-      const { data: camp } = await supabase
-        .from("campaigns")
-        .select("id, user_id")
-        .eq("hotmart_token", hottok)
-        .single();
-      if (camp) {
-        campaignId = camp.id;
-        if (!userId) userId = camp.user_id;
-      }
+      const { data: secret } = await supabase
+        .from("user_secrets").select("user_id")
+        .eq("kind", "hotmart_token").eq("value", hottok).maybeSingle();
+      if (secret) userId = (secret as any).user_id;
     }
 
     // No user found — skip (multi-tenant isolation)
@@ -293,15 +281,13 @@ Deno.serve(async (req) => {
         console.error("Push notification error:", pushErr);
       }
 
-      // Send Meta CAPI Purchase event
+      // Send Meta CAPI Purchase event (pixel from profile, token from vault)
       const { data: profile } = await supabase
-        .from("profiles")
-        .select("meta_pixel_id, meta_access_token")
-        .eq("user_id", userId)
-        .single();
-
+        .from("profiles").select("meta_pixel_id").eq("user_id", userId).maybeSingle();
+      const { data: tokenRow } = await supabase
+        .from("user_secrets").select("value").eq("user_id", userId).eq("kind", "meta_access_token").maybeSingle();
       const pixelId = (profile as any)?.meta_pixel_id;
-      const accessToken = (profile as any)?.meta_access_token;
+      const accessToken = (tokenRow as any)?.value;
 
       if (pixelId && accessToken) {
         try {
