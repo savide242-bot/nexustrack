@@ -7,14 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Globe, Copy, Check, CheckCircle, Pencil } from "lucide-react";
+import { Globe, Copy, Check, CheckCircle, Pencil, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface PlatformConfig {
   key: string;
   name: string;
   description: string;
-  fields: { label: string; field: string; placeholder: string }[];
+  fields: { label: string; vaultKind: string; placeholder: string }[];
 }
 
 const platforms: PlatformConfig[] = [
@@ -22,23 +22,18 @@ const platforms: PlatformConfig[] = [
     key: "hotmart",
     name: "Hotmart",
     description: "Receba webhooks de vendas automaticamente",
-    fields: [{ label: "Hotmart Token (hottok)", field: "hotmart_token", placeholder: "HOT-XXXXXX" }],
+    fields: [{ label: "Hotmart Token (hottok)", vaultKind: "hotmart_token", placeholder: "HOT-XXXXXX" }],
   },
   { key: "kiwify", name: "Kiwify", description: "Integração com Kiwify (em breve)", fields: [] },
   { key: "perfectpay", name: "Perfect Pay", description: "Integração com Perfect Pay (em breve)", fields: [] },
   { key: "eduzz", name: "Eduzz", description: "Integração com Eduzz (em breve)", fields: [] },
 ];
 
-function maskValue(val: string): string {
-  if (val.length <= 6) return "••••••";
-  return val.slice(0, 4) + "••••" + val.slice(-2);
-}
-
 export default function Integrations() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [tokenInfo, setTokenInfo] = useState<Record<string, { exists: boolean; masked?: string }>>({});
   const [values, setValues] = useState<Record<string, string>>({});
-  const [savedValues, setSavedValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -47,33 +42,42 @@ export default function Integrations() {
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const webhookUrl = `https://${projectId}.supabase.co/functions/v1/hotmart-webhook`;
 
-  useEffect(() => {
+  const loadVault = async () => {
     if (!user) return;
-    supabase.from("profiles").select("hotmart_token, meta_pixel_id, meta_access_token").eq("user_id", user.id).single().then(({ data }) => {
-      if (data) {
-        const vals: Record<string, string> = { hotmart_token: (data as any).hotmart_token || "" };
-        setValues(vals);
-        setSavedValues({ ...vals });
+    const map: Record<string, { exists: boolean; masked?: string }> = {};
+    for (const p of platforms) {
+      for (const f of p.fields) {
+        const { data } = await supabase.functions.invoke("secrets-vault", { body: { action: "preview", kind: f.vaultKind } });
+        map[f.vaultKind] = { exists: !!(data as any)?.exists, masked: (data as any)?.masked };
       }
-      setLoaded(true);
-    });
-  }, [user]);
+    }
+    setTokenInfo(map);
+    setLoaded(true);
+  };
 
-  const hasSavedData = Object.values(savedValues).some(v => v.length > 0);
+  useEffect(() => { loadVault(); /* eslint-disable-next-line */ }, [user]);
+
+  const hasSavedData = Object.values(tokenInfo).some(t => t.exists);
 
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
-    const { error } = await (supabase.from("profiles") as any).update({
-      hotmart_token: values.hotmart_token || null,
-    }).eq("user_id", user.id);
-
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Configuração salva!" });
-      setSavedValues({ ...values });
+    try {
+      for (const p of platforms) {
+        for (const f of p.fields) {
+          const v = (values[f.vaultKind] || "").trim();
+          if (v) {
+            const { error } = await supabase.functions.invoke("secrets-vault", { body: { action: "set", kind: f.vaultKind, value: v } });
+            if (error) throw error;
+          }
+        }
+      }
+      toast({ title: "Configuração salva no vault criptografado!" });
+      setValues({});
       setEditing(false);
+      await loadVault();
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
     }
     setSaving(false);
   };
@@ -91,7 +95,7 @@ export default function Integrations() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-3xl font-bold">Integrações</h1>
-        <p className="text-muted-foreground">Configure tokens e APIs das plataformas</p>
+        <p className="text-muted-foreground">Configure tokens e APIs das plataformas — armazenamento em vault criptografado</p>
       </div>
 
       <Card className="glass-card border-border neon-border">
@@ -128,50 +132,50 @@ export default function Integrations() {
                     <p className="text-sm text-muted-foreground">{p.description}</p>
                   </div>
                   {p.fields.length === 0 && <Badge variant="outline" className="border-border ml-auto">Em breve</Badge>}
+                  {p.fields.length > 0 && <Badge variant="outline" className="ml-auto border-primary/30 text-primary"><Lock className="h-3 w-3 mr-1" />Vault</Badge>}
                 </div>
               </CardHeader>
               {p.fields.length > 0 && (
                 <CardContent className="space-y-4">
                   {hasSavedData && !editing ? (
-                    /* Saved mode */
                     <div className="space-y-3">
-                      {p.fields.map(f => (
-                        <div key={f.field} className="flex items-center gap-3 rounded-lg bg-secondary/30 p-3">
-                          <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-muted-foreground">{f.label}</p>
-                            <p className="text-sm font-mono text-foreground">{maskValue(savedValues[f.field] || "")}</p>
+                      {p.fields.map(f => {
+                        const t = tokenInfo[f.vaultKind];
+                        return (
+                          <div key={f.vaultKind} className="flex items-center gap-3 rounded-lg bg-secondary/30 p-3">
+                            {t?.exists ? <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" /> : <Lock className="h-5 w-5 text-muted-foreground flex-shrink-0" />}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-muted-foreground">{f.label}</p>
+                              <p className="text-sm font-mono text-foreground">{t?.masked || "Não configurado"}</p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                      <Button
-                        variant="outline"
-                        onClick={() => setEditing(true)}
-                        className="border-border w-full"
-                      >
+                        );
+                      })}
+                      <Button variant="outline" onClick={() => setEditing(true)} className="border-border w-full">
                         <Pencil className="mr-2 h-4 w-4" />
                         Editar Configuração
                       </Button>
                     </div>
                   ) : (
-                    /* Edit mode */
                     <>
                       {p.fields.map(f => (
-                        <div key={f.field} className="space-y-2">
+                        <div key={f.vaultKind} className="space-y-2">
                           <Label>{f.label}</Label>
                           <Input
-                            value={values[f.field] || ""}
-                            onChange={e => setValues({ ...values, [f.field]: e.target.value })}
-                            placeholder={f.placeholder}
+                            type="password"
+                            autoComplete="off"
+                            value={values[f.vaultKind] || ""}
+                            onChange={e => setValues({ ...values, [f.vaultKind]: e.target.value })}
+                            placeholder={tokenInfo[f.vaultKind]?.exists ? "Deixe em branco para manter o atual" : f.placeholder}
                           />
                         </div>
                       ))}
                       <div className="flex gap-2">
                         <Button onClick={handleSave} className="flex-1 gradient-primary text-primary-foreground" disabled={saving}>
-                          {saving ? "Salvando..." : "Salvar Configuração"}
+                          {saving ? "Salvando..." : "Salvar no Vault"}
                         </Button>
                         {hasSavedData && (
-                          <Button variant="outline" onClick={() => { setValues({ ...savedValues }); setEditing(false); }} className="border-border">
+                          <Button variant="outline" onClick={() => { setValues({}); setEditing(false); }} className="border-border">
                             Cancelar
                           </Button>
                         )}

@@ -6,13 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Radar, Send, CheckCircle, XCircle, Activity, AlertTriangle, Terminal, Pencil } from "lucide-react";
+import { Radar, Send, CheckCircle, XCircle, Activity, AlertTriangle, Terminal, Pencil, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-function maskToken(val: string): string {
-  if (val.length <= 6) return "••••••";
-  return val.slice(0, 4) + "••••" + val.slice(-2);
-}
 
 export default function Tracking() {
   const { user } = useAuth();
@@ -20,7 +15,7 @@ export default function Tracking() {
   const [pixelId, setPixelId] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [savedPixel, setSavedPixel] = useState("");
-  const [savedToken, setSavedToken] = useState("");
+  const [tokenInfo, setTokenInfo] = useState<{ exists: boolean; masked?: string }>({ exists: false });
   const [events, setEvents] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
@@ -29,26 +24,29 @@ export default function Tracking() {
   const [liveLines, setLiveLines] = useState<{ time: string; text: string; ok: boolean }[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const loadAll = async () => {
     if (!user) return;
-    supabase.from("profiles").select("meta_pixel_id, meta_access_token").eq("user_id", user.id).single().then(({ data }) => {
-      if (data) {
-        const p = (data as any).meta_pixel_id || "";
-        const t = (data as any).meta_access_token || "";
-        setPixelId(p);
-        setAccessToken(t);
-        setSavedPixel(p);
-        setSavedToken(t);
-      }
-      setLoaded(true);
-    });
+    const [{ data: profile }, vault] = await Promise.all([
+      supabase.from("profiles").select("meta_pixel_id").eq("user_id", user.id).maybeSingle(),
+      supabase.functions.invoke("secrets-vault", { body: { action: "preview", kind: "meta_access_token" } }),
+    ]);
+    setPixelId(profile?.meta_pixel_id || "");
+    setSavedPixel(profile?.meta_pixel_id || "");
+    const v = vault.data as any;
+    setTokenInfo({ exists: !!v?.exists, masked: v?.masked });
+    setLoaded(true);
+  };
+
+  useEffect(() => {
+    loadAll();
     loadEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
     const channel = supabase
-      .channel("capi-live-logs")
+      .channel(`capi-live-${crypto.randomUUID()}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "capi_events_log" }, (payload: any) => {
         const ev = payload.new;
         if (!ev) return;
@@ -76,46 +74,48 @@ export default function Tracking() {
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
-    const { error } = await (supabase.from("profiles") as any).update({
-      meta_pixel_id: pixelId || null,
-      meta_access_token: accessToken || null,
-    }).eq("user_id", user.id);
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      // Save pixel id (non-sensitive) directly
+      const { error: pErr } = await supabase.from("profiles").update({ meta_pixel_id: pixelId || null }).eq("user_id", user.id);
+      if (pErr) throw pErr;
+      // Save token via vault
+      if (accessToken) {
+        const { error: vErr } = await supabase.functions.invoke("secrets-vault", {
+          body: { action: "set", kind: "meta_access_token", value: accessToken },
+        });
+        if (vErr) throw vErr;
+      }
       toast({ title: "Configuração CAPI salva!" });
       setSavedPixel(pixelId);
-      setSavedToken(accessToken);
+      setAccessToken("");
       setEditing(false);
+      await loadAll();
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
     }
     setSaving(false);
   };
 
   const sendTestEvent = async () => {
-    const pId = savedPixel || pixelId;
-    const tok = savedToken || accessToken;
-    if (!pId || !tok) {
+    if (!savedPixel || !tokenInfo.exists) {
       toast({ title: "Configure Pixel ID e Access Token primeiro", variant: "destructive" });
       return;
     }
     setTestSending(true);
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const res = await fetch(`https://${projectId}.supabase.co/functions/v1/meta-capi`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pixel_id: pId, access_token: tok,
-          event_name: "PageView", user_id: user?.id || null,
+      const { data, error } = await supabase.functions.invoke("meta-capi", {
+        body: {
+          event_name: "PageView",
+          user_id: user?.id || null,
           event_data: { email: user?.email || "" },
-        }),
+        },
       });
-      const data = await res.json();
-      if (data.ok) {
+      if (error) throw error;
+      if ((data as any)?.ok) {
         toast({ title: "Evento de teste enviado com sucesso!" });
         setTimeout(loadEvents, 1500);
       } else {
-        toast({ title: "Erro", description: data.error || "Falha ao enviar", variant: "destructive" });
+        toast({ title: "Erro", description: (data as any)?.error || "Falha ao enviar", variant: "destructive" });
       }
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -128,8 +128,8 @@ export default function Tracking() {
   const sentCount = events.filter(e => e.status === "sent").length;
   const errorCount = events.filter(e => e.status === "error").length;
   const lastEvent = events.length > 0 ? events[0] : null;
-  const pixelConfigured = !!(savedPixel && savedToken);
-  const hasSavedConfig = savedPixel.length > 0 || savedToken.length > 0;
+  const pixelConfigured = !!(savedPixel && tokenInfo.exists);
+  const hasSavedConfig = savedPixel.length > 0 || tokenInfo.exists;
 
   return (
     <div className="space-y-6">
@@ -138,7 +138,6 @@ export default function Tracking() {
         <p className="text-muted-foreground">Rastreamento avançado Meta Conversions API — dados reais do comprador</p>
       </div>
 
-      {/* Status Cards */}
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         {[
           {
@@ -168,7 +167,6 @@ export default function Tracking() {
         ))}
       </div>
 
-      {/* LIVE TERMINAL */}
       <Card className="border-border overflow-hidden animate-fade-in" style={{ animationDelay: "200ms", animationFillMode: "both" }}>
         <CardHeader className="bg-black/80 border-b border-border py-3">
           <div className="flex items-center gap-2">
@@ -191,30 +189,29 @@ export default function Tracking() {
         </div>
       </Card>
 
-      {/* Config */}
       <Card className="glass-card border-border animate-fade-in" style={{ animationDelay: "300ms", animationFillMode: "both" }}>
         <CardHeader>
           <CardTitle className="font-display text-lg flex items-center gap-2">
             <Radar className="h-5 w-5 text-primary" />
             Configuração Meta CAPI
+            <Badge variant="outline" className="ml-auto border-primary/30 text-primary"><Lock className="h-3 w-3 mr-1" />Vault criptografado</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {hasSavedConfig && !editing ? (
-            /* Saved mode */
             <div className="space-y-3">
               <div className="flex items-center gap-3 rounded-lg bg-secondary/30 p-3">
                 <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-xs text-muted-foreground">Pixel ID</p>
-                  <p className="text-sm font-mono text-foreground">{maskToken(savedPixel)}</p>
+                  <p className="text-sm font-mono text-foreground">{savedPixel || "—"}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-lg bg-secondary/30 p-3">
-                <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                <Lock className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">Access Token</p>
-                  <p className="text-sm font-mono text-foreground">{maskToken(savedToken)}</p>
+                  <p className="text-xs text-muted-foreground">Access Token (vault)</p>
+                  <p className="text-sm font-mono text-foreground">{tokenInfo.masked || "—"}</p>
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -227,28 +224,24 @@ export default function Tracking() {
               </div>
             </div>
           ) : (
-            /* Edit mode */
             <>
               <div className="space-y-2">
                 <Label>Pixel ID</Label>
                 <Input value={pixelId} onChange={e => setPixelId(e.target.value)} placeholder="123456789012345" />
               </div>
               <div className="space-y-2">
-                <Label>Access Token (CAPI)</Label>
-                <Input value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="EAAxxxxxxx" type="password" />
+                <Label>Access Token (CAPI) — armazenado criptografado, nunca lido pelo navegador</Label>
+                <Input value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder={tokenInfo.exists ? "Deixe em branco para manter o atual" : "EAAxxxxxxx"} type="password" autoComplete="off" />
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button onClick={handleSave} className="gradient-primary text-primary-foreground active:scale-95 transition-transform flex-1" disabled={saving}>
                   {saving ? "Salvando..." : "Salvar Configuração"}
                 </Button>
                 {hasSavedConfig && (
-                  <Button variant="outline" onClick={() => { setPixelId(savedPixel); setAccessToken(savedToken); setEditing(false); }} className="border-border">
+                  <Button variant="outline" onClick={() => { setPixelId(savedPixel); setAccessToken(""); setEditing(false); }} className="border-border">
                     Cancelar
                   </Button>
                 )}
-                <Button variant="outline" onClick={sendTestEvent} disabled={testSending} className="border-border">
-                  <Send className="mr-2 h-4 w-4" />{testSending ? "Enviando..." : "Enviar Evento Teste"}
-                </Button>
               </div>
             </>
           )}
@@ -266,7 +259,6 @@ export default function Tracking() {
         </CardContent>
       </Card>
 
-      {/* Event History */}
       <Card className="glass-card border-border overflow-hidden animate-fade-in" style={{ animationDelay: "400ms", animationFillMode: "both" }}>
         <CardHeader>
           <div className="flex items-center justify-between">
