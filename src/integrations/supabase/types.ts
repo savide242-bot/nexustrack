@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_spend_manual: {
+        Row: {
+          amount: number
+          created_at: string
+          currency: string
+          id: string
+          note: string | null
+          operation_id: string
+          spend_date: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          currency?: string
+          id?: string
+          note?: string | null
+          operation_id: string
+          spend_date?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          currency?: string
+          id?: string
+          note?: string | null
+          operation_id?: string
+          spend_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_spend_manual_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "operations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -57,6 +98,7 @@ export type Database = {
           is_active: boolean
           meta_pixel_id: string | null
           name: string
+          operation_id: string | null
           tiktok_pixel_id: string | null
           updated_at: string
           user_id: string
@@ -70,6 +112,7 @@ export type Database = {
           is_active?: boolean
           meta_pixel_id?: string | null
           name: string
+          operation_id?: string | null
           tiktok_pixel_id?: string | null
           updated_at?: string
           user_id: string
@@ -83,11 +126,20 @@ export type Database = {
           is_active?: boolean
           meta_pixel_id?: string | null
           name?: string
+          operation_id?: string | null
           tiktok_pixel_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "operations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       capi_events_log: {
         Row: {
@@ -377,12 +429,52 @@ export type Database = {
           },
         ]
       }
+      operations: {
+        Row: {
+          color: string
+          created_at: string
+          currency: string
+          fb_ad_account_id: string | null
+          id: string
+          is_active: boolean
+          kind: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          currency?: string
+          fb_ad_account_id?: string | null
+          id?: string
+          is_active?: boolean
+          kind?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          currency?: string
+          fb_ad_account_id?: string | null
+          id?: string
+          is_active?: boolean
+          kind?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       pages: {
         Row: {
           campaign_id: string | null
           created_at: string
           id: string
           name: string
+          operation_id: string | null
           url: string
           user_id: string
         }
@@ -391,6 +483,7 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          operation_id?: string | null
           url: string
           user_id: string
         }
@@ -399,6 +492,7 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          operation_id?: string | null
           url?: string
           user_id?: string
         }
@@ -408,6 +502,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pages_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "operations"
             referencedColumns: ["id"]
           },
         ]
@@ -506,6 +607,7 @@ export type Database = {
           id: string
           last_webhook_at: string | null
           lead_id: string | null
+          operation_id: string | null
           original_amount: number
           original_currency: string
           platform: string
@@ -531,6 +633,7 @@ export type Database = {
           id?: string
           last_webhook_at?: string | null
           lead_id?: string | null
+          operation_id?: string | null
           original_amount: number
           original_currency?: string
           platform?: string
@@ -556,6 +659,7 @@ export type Database = {
           id?: string
           last_webhook_at?: string | null
           lead_id?: string | null
+          operation_id?: string | null
           original_amount?: number
           original_currency?: string
           platform?: string
@@ -579,6 +683,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads_clicks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "operations"
             referencedColumns: ["id"]
           },
         ]
