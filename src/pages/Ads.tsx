@@ -95,7 +95,7 @@ function Kpi({ icon: Icon, label, value, hint, accent, negative }: { icon: any; 
         </div>
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground flex items-center gap-1">
-            {label}{hint && <InfoTooltip content={hint} />}
+            {label}{hint && <InfoTooltip text={hint} />}
           </p>
           <p className={`font-display text-xl font-bold truncate ${negative ? "text-destructive" : accent ? "text-primary" : "text-foreground"}`}>{value}</p>
         </div>
@@ -355,8 +355,8 @@ export default function Ads() {
           icon={Target}
           title="Nenhuma operação ainda"
           description="Cria uma operação (por exemplo África do Sul em ZAR) para separares os resultados de cada mercado e acompanhares o lucro real."
-          actionLabel="Criar primeira operação"
-          onAction={openNewOp}
+          ctaLabel="Criar primeira operação"
+          onCta={openNewOp}
         />
       ) : (
         <>

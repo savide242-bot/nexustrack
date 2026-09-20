@@ -191,6 +191,51 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Resolve the operation (business unit) this sale belongs to, so amounts and
+    // notifications can be shown in that operation's own currency.
+    let operationId: string | null = null;
+    let operationCurrency: string | null = null;
+    const matchedLeadRow = userLeads.find((l) => l.id === leadId);
+    if (campaignId) {
+      const { data: camp } = await supabase
+        .from("campaigns").select("operation_id").eq("id", campaignId).maybeSingle();
+      operationId = (camp as any)?.operation_id ?? null;
+    }
+    if (!operationId && matchedLeadRow?.page_id) {
+      const { data: pg } = await supabase
+        .from("pages").select("operation_id").eq("id", matchedLeadRow.page_id).maybeSingle();
+      operationId = (pg as any)?.operation_id ?? null;
+    }
+    if (operationId) {
+      const { data: op } = await supabase
+        .from("operations").select("currency").eq("id", operationId).maybeSingle();
+      operationCurrency = (op as any)?.currency ?? null;
+    }
+
+    // Amount in the operation's currency (falls back to MZN display value)
+    let amountOperation = amountMzn;
+    let notifyCurrency = "MZN";
+    if (operationCurrency && operationCurrency !== "MZN") {
+      notifyCurrency = operationCurrency;
+      if (originalCurrency === operationCurrency) {
+        amountOperation = originalAmount;
+      } else {
+        try {
+          const r = await fetch(`https://open.er-api.com/v6/latest/${originalCurrency}`);
+          const d = await r.json();
+          const rate = d.rates?.[operationCurrency];
+          amountOperation = rate ? originalAmount * rate : amountMzn;
+          if (!rate) notifyCurrency = "MZN";
+        } catch {
+          amountOperation = amountMzn;
+          notifyCurrency = "MZN";
+        }
+      }
+    }
+    const formattedAmount = notifyCurrency === "MZN"
+      ? `${Math.round(amountOperation).toLocaleString("pt-MZ")} MT`
+      : `${notifyCurrency} ${amountOperation.toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
     const finalTransactionId = transactionId || `hotmart_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
     // IDEMPOTENCY: Check if sale already exists
@@ -228,6 +273,7 @@ Deno.serve(async (req) => {
     const { data: sale, error: saleErr } = await supabase.from("sales").insert({
       campaign_id: campaignId,
       lead_id: leadId,
+      operation_id: operationId,
       user_id: userId,
       buyer_name: buyerName,
       buyer_email: buyerEmail,
@@ -259,7 +305,7 @@ Deno.serve(async (req) => {
         user_id: userId,
         sale_id: sale.id,
         title: `💰 Nova venda!`,
-        body: `${buyerName || "Alguém"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
+        body: `${buyerName || "Alguém"} pagou ${formattedAmount} em Hotmart`,
       });
 
       try {
@@ -273,7 +319,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             user_id: userId,
             title: "💰 Nova venda!",
-            body: `${buyerName || "Alguém"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
+            body: `${buyerName || "Alguém"} pagou ${formattedAmount} em Hotmart`,
               kind: "sale",
           }),
         });

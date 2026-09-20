@@ -10,11 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { FileText, Plus, Copy, Check, MousePointerClick, Eye, BarChart3, Globe, TrendingUp, Link, ShoppingCart, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Page {
   id: string;
   user_id: string;
   campaign_id: string | null;
+  operation_id: string | null;
   url: string;
   name: string;
   created_at: string;
@@ -42,6 +44,28 @@ export default function Pages() {
   const [pageMetrics, setPageMetrics] = useState<Record<string, PageMetrics>>({});
   const [dataLoading, setDataLoading] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
+  const [operations, setOperations] = useState<{ id: string; name: string; currency: string }[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("operations")
+      .select("id, name, currency")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true })
+      .then(({ data }) => setOperations((data || []) as { id: string; name: string; currency: string }[]));
+  }, [user]);
+
+  const assignOperation = async (pageId: string, operationId: string) => {
+    const value = operationId === "none" ? null : operationId;
+    const { error } = await supabase.from("pages").update({ operation_id: value }).eq("id", pageId);
+    if (error) {
+      toast({ title: "Erro ao associar operação", description: error.message, variant: "destructive" });
+      return;
+    }
+    setPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, operation_id: value } : p)));
+    toast({ title: "Operação associada" });
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -278,10 +302,25 @@ export default function Pages() {
                         <Link className="h-3 w-3 flex-shrink-0" /><span className="truncate">{page.url}</span>
                       </p>
                     </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center flex-shrink-0">
+                    {operations.length > 0 && (
+                      <Select value={page.operation_id || "none"} onValueChange={(v) => assignOperation(page.id, v)}>
+                        <SelectTrigger className="w-full sm:w-[190px] h-9 text-xs">
+                          <SelectValue placeholder="Operação" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem operação</SelectItem>
+                          {operations.map((op) => (
+                            <SelectItem key={op.id} value={op.id}>{op.name} ({op.currency})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     <Button variant="outline" size="sm" onClick={() => copyScript(page)} className="border-border w-full sm:w-auto flex-shrink-0 active:scale-95 transition-transform">
                       {copied === page.id ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
                       {copied === page.id ? "Copiado!" : "Copiar Script"}
                     </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
