@@ -273,6 +273,7 @@ Deno.serve(async (req) => {
     const { data: sale, error: saleErr } = await supabase.from("sales").insert({
       campaign_id: campaignId,
       lead_id: leadId,
+      operation_id: operationId,
       user_id: userId,
       buyer_name: buyerName,
       buyer_email: buyerEmail,
@@ -304,7 +305,7 @@ Deno.serve(async (req) => {
         user_id: userId,
         sale_id: sale.id,
         title: `💰 Nova venda!`,
-        body: `${buyerName || "Alguém"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
+        body: `${buyerName || "Alguém"} pagou ${formattedAmount} em Hotmart`,
       });
 
       try {
@@ -318,7 +319,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             user_id: userId,
             title: "💰 Nova venda!",
-            body: `${buyerName || "Alguém"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
+            body: `${buyerName || "Alguém"} pagou ${formattedAmount} em Hotmart`,
               kind: "sale",
           }),
         });
