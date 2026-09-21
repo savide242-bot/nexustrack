@@ -14,10 +14,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/EmptyState";
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { useFacebookConnect } from "@/hooks/use-facebook-connect";
 import { CURRENCIES, convert, fetchRates, formatCurrency, rateBetween, type Rates } from "@/lib/currency";
 import {
   Loader2, Plus, RefreshCw, Target, TrendingUp, Wallet, DollarSign,
-  PiggyBank, Pencil, Pause, Play, Settings2, Trash2,
+  PiggyBank, Pencil, Pause, Play, Settings2, Trash2, Facebook,
 } from "lucide-react";
 
 interface Operation {
@@ -108,6 +109,7 @@ export default function Ads() {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  const fb = useFacebookConnect();
   const [rates, setRates] = useState<Rates>({ USD: 1 });
   const [operations, setOperations] = useState<Operation[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -360,6 +362,21 @@ export default function Ads() {
         />
       ) : (
         <>
+          {!fb.connected && (
+            <Card className="glass-card border-border">
+              <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4">
+                <div>
+                  <p className="font-medium text-foreground">Liga a tua conta do Facebook</p>
+                  <p className="text-xs text-muted-foreground">Faz login com a conta que gere os anúncios para ver gasto, pausar campanhas e mudar orçamentos aqui.</p>
+                </div>
+                <Button onClick={fb.connect} disabled={fb.connecting} className="gap-2 gradient-primary text-primary-foreground">
+                  {fb.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4" />}
+                  Ligar Facebook
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <Tabs value={selectedId} onValueChange={setSelectedId}>
             <TabsList className="flex-wrap h-auto">
               {operations.map((op) => (
@@ -507,14 +524,37 @@ export default function Ads() {
             </div>
             <div className="space-y-2">
               <Label>Conta de anúncios do Facebook</Label>
-              <Input
-                value={form.fb_ad_account_id}
-                onChange={(e) => setForm({ ...form, fb_ad_account_id: e.target.value })}
-                placeholder="Ex: 1234567890123456"
-              />
-              <p className="text-xs text-muted-foreground">
-                Liga a tua conta do Facebook em <strong>Campanhas</strong> e cola aqui o número da conta de anúncios desta operação.
-              </p>
+              {fb.accounts.length > 0 ? (
+                <Select
+                  value={form.fb_ad_account_id || "none"}
+                  onValueChange={(v) => setForm({ ...form, fb_ad_account_id: v === "none" ? "" : v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Escolhe a conta" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem conta de anúncios</SelectItem>
+                    {fb.accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name} {a.currency ? `(${a.currency})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <>
+                  <Button type="button" variant="outline" className="w-full gap-2" onClick={fb.connect} disabled={fb.connecting}>
+                    {fb.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4" />}
+                    Ligar conta do Facebook
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Abre uma janela do Facebook para fazeres login com a conta que gere os anúncios. Depois escolhes aqui qual conta de anúncios pertence a esta operação.
+                  </p>
+                  <Input
+                    value={form.fb_ad_account_id}
+                    onChange={(e) => setForm({ ...form, fb_ad_account_id: e.target.value })}
+                    placeholder="Ou cola o número da conta: 1234567890123456"
+                  />
+                </>
+              )}
             </div>
           </div>
           <DialogFooter>
