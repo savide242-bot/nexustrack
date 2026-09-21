@@ -11,3 +11,4 @@ type: feature
 - Orçamento pode ser escrito em qualquer moeda e é convertido ao câmbio do dia para a moeda da conta de anúncios antes de ir ao Facebook.
 - `hotmart-webhook` resolve `operation_id` (via campanha ou página do lead) e envia a notificação de venda na moeda da operação.
 - Associação de página a operação feita em `/pages` através de um selector por página.
+- Ligação ao Facebook feita pelo hook `src/hooks/use-facebook-connect.tsx`: popup do Facebook Login (scopes ads_read, ads_management, business_management) → `fb-token-exchange` troca por token de longa duração → guardado no vault (`meta_access_token`). Qualquer conta pode ligar-se; a acção `accounts` do `fb-ads-control` lista as contas de anúncio dessa pessoa para escolher por operação.
