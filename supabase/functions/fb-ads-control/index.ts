@@ -56,6 +56,23 @@ Deno.serve(async (req) => {
       } catch (_) { /* best effort */ }
     };
 
+    // ---- Read: ad accounts the connected Facebook user can manage ----
+    if (action === "accounts") {
+      const res = await fetch(
+        `${GRAPH}/me/adaccounts?fields=id,account_id,name,currency,account_status,business_name&limit=200&access_token=${token}`,
+      );
+      const data = await res.json();
+      if (data.error) return json({ error: data.error.message }, 400);
+      const ad_accounts = (data.data || []).map((a: any) => ({
+        id: String(a.account_id || a.id || "").replace(/^act_/, ""),
+        name: a.name,
+        currency: a.currency,
+        account_status: a.account_status,
+        business_name: a.business_name || null,
+      }));
+      return json({ ad_accounts });
+    }
+
     // ---- Read: campaigns with insights, status and budget ----
     if (action === "campaigns") {
       const accountId = normalizeAccount(String(body.ad_account_id || ""));
