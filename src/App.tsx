@@ -13,6 +13,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Index from "./pages/Index";
 import Campaigns from "./pages/Campaigns";
 import Ads from "./pages/Ads";
+import Dashboards from "./pages/Dashboards";
 import Pages from "./pages/Pages";
 import Sales from "./pages/Sales";
 import Leads from "./pages/Leads";
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/campaigns" element={<Campaigns />} />
               <Route path="/ads" element={<Ads />} />
+              <Route path="/dashboards" element={<Dashboards />} />
               <Route path="/pages" element={<Pages />} />
               <Route path="/sales" element={<Sales />} />
               <Route path="/leads" element={<Leads />} />

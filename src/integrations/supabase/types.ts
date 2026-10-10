@@ -431,40 +431,61 @@ export type Database = {
       }
       operations: {
         Row: {
+          attribution_window_days: number
           color: string
           created_at: string
           currency: string
           fb_ad_account_id: string | null
+          goal_period: string
           id: string
           is_active: boolean
           kind: string
+          language: string
           name: string
+          revenue_goal: number | null
+          timezone: string
+          traffic_sources: string[]
           updated_at: string
           user_id: string
+          webhook_key: string
         }
         Insert: {
+          attribution_window_days?: number
           color?: string
           created_at?: string
           currency?: string
           fb_ad_account_id?: string | null
+          goal_period?: string
           id?: string
           is_active?: boolean
           kind?: string
+          language?: string
           name: string
+          revenue_goal?: number | null
+          timezone?: string
+          traffic_sources?: string[]
           updated_at?: string
           user_id: string
+          webhook_key?: string
         }
         Update: {
+          attribution_window_days?: number
           color?: string
           created_at?: string
           currency?: string
           fb_ad_account_id?: string | null
+          goal_period?: string
           id?: string
           is_active?: boolean
           kind?: string
+          language?: string
           name?: string
+          revenue_goal?: number | null
+          timezone?: string
+          traffic_sources?: string[]
           updated_at?: string
           user_id?: string
+          webhook_key?: string
         }
         Relationships: []
       }
