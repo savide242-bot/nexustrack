@@ -196,7 +196,14 @@ Deno.serve(async (req) => {
     let operationId: string | null = null;
     let operationCurrency: string | null = null;
     const matchedLeadRow = userLeads.find((l) => l.id === leadId);
-    if (campaignId) {
+    // 1) Explicit dashboard routing via ?op=<webhook_key> (must belong to this user)
+    const opKey = new URL(req.url).searchParams.get("op")?.trim();
+    if (opKey && /^[a-f0-9]{32}$/.test(opKey)) {
+      const { data: opRow } = await supabase
+        .from("operations").select("id").eq("webhook_key", opKey).eq("user_id", userId).maybeSingle();
+      operationId = (opRow as any)?.id ?? null;
+    }
+    if (!operationId && campaignId) {
       const { data: camp } = await supabase
         .from("campaigns").select("operation_id").eq("id", campaignId).maybeSingle();
       operationId = (camp as any)?.operation_id ?? null;
