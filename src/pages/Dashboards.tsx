@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/EmptyState";
-import { CURRENCIES, formatCurrency } from "@/lib/currency";
+import { CURRENCIES, convert, fetchRates, formatCurrency, type Rates } from "@/lib/currency";
 import { Copy, LayoutDashboard, Pencil, Plus } from "lucide-react";
 
 const LANGS = [{ v: "pt", l: "Português" }, { v: "en", l: "English" }, { v: "es", l: "Español" }];
@@ -31,6 +31,8 @@ export default function Dashboards() {
   const [items, setItems] = useState<Dash[]>([]);
   const [revenue, setRevenue] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [rates, setRates] = useState<Rates>({});
+  useEffect(() => { fetchRates().then(setRates); }, []);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Dash | null>(null);
   const [form, setForm] = useState<any>(empty);
@@ -99,7 +101,7 @@ export default function Dashboards() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {items.map((d) => {
             const goal = Number(d.revenue_goal || 0);
-            const rev = revenue[d.id] || 0;
+            const rev = convert(revenue[d.id] || 0, "MZN", d.currency, rates);
             const pct = goal > 0 ? Math.min(100, (rev / goal) * 100) : 0;
             return (
               <Card key={d.id} className="border-border">
@@ -120,10 +122,10 @@ export default function Dashboards() {
                 <CardContent className="space-y-3 text-sm">
                   <div>
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Faturado este mês (MZN)</span>
+                      <span>Faturado este mês ({d.currency})</span>
                       <span>{goal > 0 ? `${pct.toFixed(0)}% da meta` : "sem meta"}</span>
                     </div>
-                    <p className="font-semibold">{formatCurrency(rev, "MZN")}</p>
+                    <p className="font-semibold">{formatCurrency(rev, d.currency)}</p>
                     {goal > 0 && <div className="h-1.5 bg-muted rounded mt-1"><div className="h-full bg-primary rounded" style={{ width: `${pct}%` }} /></div>}
                   </div>
                   <div>
