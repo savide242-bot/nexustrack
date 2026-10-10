@@ -8,6 +8,13 @@
       "when": 1789832083880,
       "tag": "0000_create_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791651579051,
+      "tag": "0001_operations_dashboard_settings",
+      "breakpoints": true
     }
   ]
 }
