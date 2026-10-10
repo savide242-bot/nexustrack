@@ -15,6 +15,13 @@
       "when": 1791651579051,
       "tag": "0001_operations_dashboard_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791652082918,
+      "tag": "0002_leads_cta_operation_scope",
+      "breakpoints": true
     }
   ]
 }

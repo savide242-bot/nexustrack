@@ -194,6 +194,7 @@ export type Database = {
           created_at: string
           id: string
           lead_id: string | null
+          operation_id: string | null
           page_id: string | null
           page_url: string | null
         }
@@ -205,6 +206,7 @@ export type Database = {
           created_at?: string
           id?: string
           lead_id?: string | null
+          operation_id?: string | null
           page_id?: string | null
           page_url?: string | null
         }
@@ -216,6 +218,7 @@ export type Database = {
           created_at?: string
           id?: string
           lead_id?: string | null
+          operation_id?: string | null
           page_id?: string | null
           page_url?: string | null
         }
@@ -277,6 +280,7 @@ export type Database = {
           ip_address: string | null
           lead_score: number | null
           name: string | null
+          operation_id: string | null
           page_id: string | null
           page_url: string | null
           phone: string | null
@@ -304,6 +308,7 @@ export type Database = {
           ip_address?: string | null
           lead_score?: number | null
           name?: string | null
+          operation_id?: string | null
           page_id?: string | null
           page_url?: string | null
           phone?: string | null
@@ -331,6 +336,7 @@ export type Database = {
           ip_address?: string | null
           lead_score?: number | null
           name?: string | null
+          operation_id?: string | null
           page_id?: string | null
           page_url?: string | null
           phone?: string | null
