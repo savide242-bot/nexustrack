@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     if (!allowed) return json({ error: "Rate limit" }, 429);
 
     const token = await getSecret(admin, userId, "meta_access_token");
-    if (!token) return json({ error: "Conta do Facebook não conectada" }, 400);
+    if (!token) return json({ error: "Conta do Facebook não conectada", code: "not_connected" }, 200);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
         `${GRAPH}/me/adaccounts?fields=id,account_id,name,currency,account_status,business_name&limit=200&access_token=${token}`,
       );
       const data = await res.json();
-      if (data.error) return json({ error: data.error.message }, 400);
+      if (data.error) return fbErr(data.error);
       const ad_accounts = (data.data || []).map((a: any) => ({
         id: String(a.account_id || a.id || "").replace(/^act_/, ""),
         name: a.name,
@@ -86,8 +86,8 @@ Deno.serve(async (req) => {
 
       const [listRes, insRes, accRes] = await Promise.all([fetch(listUrl), fetch(insightsUrl), fetch(accountUrl)]);
       const [list, ins, acc] = await Promise.all([listRes.json(), insRes.json(), accRes.json()]);
-      if (list.error) return json({ error: list.error.message }, 400);
-      if (ins.error) return json({ error: ins.error.message }, 400);
+      if (list.error) return fbErr(list.error);
+      if (ins.error) return fbErr(ins.error);
 
       const byId = new Map<string, any>();
       for (const row of ins.data || []) byId.set(row.campaign_id, row);
@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ daily_budget: Math.round(amount * 100), access_token: token }),
       });
       const data = await res.json();
-      if (data.error) return json({ error: data.error.message }, 400);
+      if (data.error) return fbErr(data.error);
       await audit(campaignId, { daily_budget: amount });
       return json({ ok: true });
     }
@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ status, access_token: token }),
       });
       const data = await res.json();
-      if (data.error) return json({ error: data.error.message }, 400);
+      if (data.error) return fbErr(data.error);
       await audit(campaignId, { status });
       return json({ ok: true });
     }
@@ -167,3 +167,11 @@ Deno.serve(async (req) => {
     return json({ error: e.message }, 500);
   }
 });
+
+function fbErr(e: any) {
+  const perm = e?.code === 200 || e?.code === 190 || /permission/i.test(e?.message || "");
+  return new Response(JSON.stringify({
+    error: perm ? "O Facebook não deu permissão para ver as contas de anúncio. Clica em 'Ligar Facebook' de novo e aceita todas as permissões (ads_read, ads_management, business_management)." : (e?.message || "Erro do Facebook"),
+    code: perm ? "missing_permissions" : "fb_error",
+  }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
