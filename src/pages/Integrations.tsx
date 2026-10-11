@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboard } from "@/contexts/DashboardContext";
@@ -10,9 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Share2, Radio, FileText, Code2, MessageSquare, FlaskConical,
-  Check, Copy, Plus, RefreshCw, MoreVertical, Facebook, ExternalLink,
-  ChevronRight, ChevronDown, CheckCircle2, ShieldCheck, Trash2
+  Share2, Radio, FileText, Code2, FlaskConical,
+  Check, Copy, Plus, RefreshCw, Facebook, ExternalLink,
+  ChevronRight, Trash2, Settings, Loader2
 } from "lucide-react";
 
 interface FbAccount {
@@ -21,6 +21,8 @@ interface FbAccount {
   currency: string;
   status?: number;
 }
+
+const FB_APP_ID_KEY = "nx_fb_app_id";
 
 export default function Integrations() {
   const { user } = useAuth();
@@ -33,9 +35,14 @@ export default function Integrations() {
   const [fbAccounts, setFbAccounts] = useState<FbAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [profileName, setProfileName] = useState<string | null>(null);
-  const [tokenModalOpen, setTokenModalOpen] = useState(false);
-  const [tokenInput, setTokenInput] = useState("");
-  const [savingToken, setSavingToken] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+
+  // App ID Modal (só se ainda não configurado)
+  const [appIdModalOpen, setAppIdModalOpen] = useState(false);
+  const [appIdInput, setAppIdInput] = useState(() => {
+    return localStorage.getItem(FB_APP_ID_KEY) || "";
+  });
+
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
   // Parâmetros de UTM padrão UTMify para Meta Ads
@@ -48,22 +55,21 @@ export default function Integrations() {
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "qjfnosljbyqzyrfhiybi";
   const webhookUrl = `https://${projectId}.supabase.co/functions/v1/hotmart-webhook?dash=${current?.id || ""}`;
 
+  // 1. Carregar dados do perfil e contas
   const loadFbData = async () => {
     if (!user) return;
     setLoadingAccounts(true);
 
-    // 1. Verificar se existe token no Vault
     const { data: vaultData } = await supabase.functions.invoke("secrets-vault", {
       body: { action: "preview", kind: "meta_access_token" },
     });
 
     if (vaultData?.exists) {
-      setProfileName(user.email ? user.email.split("@")[0] : "Perfil Conectado");
-
-      // 2. Carregar contas de anúncios
-      const { data, error } = await supabase.functions.invoke("fb-list-accounts");
-      if (data?.accounts) {
-        setFbAccounts(data.accounts);
+      // Buscar nome do perfil conectado
+      const { data: accountsData } = await supabase.functions.invoke("fb-list-accounts");
+      if (accountsData?.accounts) {
+        setFbAccounts(accountsData.accounts);
+        setProfileName(user.email ? user.email.split("@")[0] : "Perfil Conectado");
       }
     } else {
       setProfileName(null);
@@ -76,29 +82,110 @@ export default function Integrations() {
     loadFbData();
   }, [user]);
 
-  const handleSaveToken = async () => {
-    if (!tokenInput.trim()) {
-      toast({ title: "Informe o token de acesso da Meta", variant: "destructive" });
+  // 2. Ouvinte do PostMessage vindo do Pop-up do Facebook (/fb-callback.html)
+  useEffect(() => {
+    const handleAuthMessage = async (event: MessageEvent) => {
+      if (event.data?.type === "FB_OAUTH_SUCCESS" && event.data?.token) {
+        setConnecting(true);
+        toast({ title: "Autorizado pelo Facebook!", description: "Salvando credenciais e buscando contas..." });
+
+        try {
+          // Salvar token no Vault
+          await supabase.functions.invoke("secrets-vault", {
+            body: { action: "set", kind: "meta_access_token", value: event.data.token },
+          });
+
+          // Buscar dados do perfil na Graph API
+          const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${event.data.token}`);
+          const meData = await meRes.json();
+          if (meData?.name) {
+            setProfileName(meData.name);
+          } else {
+            setProfileName("Facebook Conectado");
+          }
+
+          // Carregar contas de anúncios
+          const { data: accData, error: accErr } = await supabase.functions.invoke("fb-list-accounts");
+          if (accData?.accounts) {
+            setFbAccounts(accData.accounts);
+            toast({
+              title: "Contas de Anúncio Carregadas!",
+              description: `${accData.accounts.length} conta(s) encontrada(s). Selecione a conta desta dashboard abaixo.`,
+            });
+          } else if (accErr) {
+            toast({ title: "Aviso", description: "Token salvo, mas nenhuma conta encontrada.", variant: "destructive" });
+          }
+        } catch (e: any) {
+          toast({ title: "Erro na autenticação", description: e.message, variant: "destructive" });
+        }
+        setConnecting(false);
+      } else if (event.data?.type === "FB_OAUTH_ERROR") {
+        setConnecting(false);
+        toast({ title: "Falha na conexão", description: event.data.error, variant: "destructive" });
+      }
+    };
+
+    window.addEventListener("message", handleAuthMessage);
+    return () => window.removeEventListener("message", handleAuthMessage);
+  }, []);
+
+  // 3. Abertura do POP-UP Oficial do Facebook (Idêntico ao UTMify)
+  const openFacebookPopup = (appIdToUse: string) => {
+    if (!appIdToUse.trim()) {
+      setAppIdModalOpen(true);
       return;
     }
 
-    setSavingToken(true);
-    const { data, error } = await supabase.functions.invoke("secrets-vault", {
-      body: { action: "set", kind: "meta_access_token", value: tokenInput.trim() },
-    });
-    setSavingToken(false);
+    const width = 600;
+    const height = 750;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
 
-    if (error || (data as any)?.error) {
-      toast({ title: "Erro ao salvar", description: error?.message || (data as any)?.error, variant: "destructive" });
-      return;
+    const redirectUri = `${window.location.origin}/fb-callback.html`;
+    const scopes = "ads_read,ads_management,business_management,public_profile";
+    const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${encodeURIComponent(
+      appIdToUse.trim()
+    )}&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&scope=${encodeURIComponent(scopes)}&response_type=token&display=popup`;
+
+    const popup = window.open(
+      oauthUrl,
+      "facebook_oauth",
+      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+    );
+
+    if (!popup || popup.closed || typeof popup.closed === "undefined") {
+      toast({
+        title: "Pop-up bloqueado pelo navegador",
+        description: "Permita pop-ups para este site nas opções do navegador e tente novamente.",
+        variant: "destructive",
+      });
+    } else {
+      popup.focus();
     }
-
-    toast({ title: "Perfil do Facebook conectado com sucesso!" });
-    setTokenModalOpen(false);
-    setTokenInput("");
-    loadFbData();
   };
 
+  const handleStartConnect = () => {
+    const savedAppId = localStorage.getItem(FB_APP_ID_KEY) || appIdInput;
+    if (!savedAppId) {
+      setAppIdModalOpen(true);
+    } else {
+      openFacebookPopup(savedAppId);
+    }
+  };
+
+  const handleSaveAppIdAndOpen = () => {
+    if (!appIdInput.trim()) {
+      toast({ title: "Informe o App ID", variant: "destructive" });
+      return;
+    }
+    localStorage.setItem(FB_APP_ID_KEY, appIdInput.trim());
+    setAppIdModalOpen(false);
+    openFacebookPopup(appIdInput.trim());
+  };
+
+  // 4. Seleção da Conta de Anúncios para a Dashboard Ativa
   const handleSelectAccount = async (account: FbAccount) => {
     if (!current) {
       toast({ title: "Selecione uma dashboard primeiro", variant: "destructive" });
@@ -131,7 +218,7 @@ export default function Integrations() {
 
     toast({
       title: "Conta de Anúncios vinculada!",
-      description: `${account.name} (act_${account.id}) conectada à dashboard ${current.name}`,
+      description: `${account.name} (act_${account.id}) vinculada à dashboard "${current.name}".`,
     });
     await reloadDashboards();
   };
@@ -161,16 +248,16 @@ export default function Integrations() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
-              Configuração da Dashboard:
+              Dashboard Selecionada:
             </span>
             <strong className="text-foreground text-sm font-bold">{current?.name || "Principal"}</strong>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Conecte suas fontes de anúncios, copie o script para sua página e configure webhooks.
+            Conecte seu Facebook via pop-up, selecione a conta de anúncio e copie os parâmetros UTM.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={loadFbData} disabled={loadingAccounts} className="h-8 gap-1.5 text-xs">
-          <RefreshCw className={`h-3.5 w-3.5 ${loadingAccounts ? "animate-spin" : ""}`} /> Atualizar status
+          <RefreshCw className={`h-3.5 w-3.5 ${loadingAccounts ? "animate-spin" : ""}`} /> Atualizar
         </Button>
       </div>
 
@@ -232,7 +319,7 @@ export default function Integrations() {
         </button>
       </div>
 
-      {/* ABA 1: ANÚNCIOS (Foco 100% Meta Ads, Foto 1) */}
+      {/* ABA 1: ANÚNCIOS (Meta Ads com POP-UP Oficial) */}
       {activeTab === "ads" && (
         <div className="space-y-6">
           {/* Card: Meta Ads */}
@@ -259,32 +346,55 @@ export default function Integrations() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-foreground">{profileName}</p>
-                      <p className="text-[11px] text-muted-foreground font-mono">Token Meta ativo no Vault</p>
+                      <p className="text-[11px] text-muted-foreground font-mono">Perfil do Facebook Autorizado</p>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleDisconnectFb}
-                    className="text-destructive hover:text-destructive h-8 text-xs gap-1"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" /> Desconectar
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleStartConnect}
+                      className="h-8 text-xs gap-1"
+                    >
+                      Reconectar
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleDisconnectFb}
+                      className="text-destructive hover:text-destructive h-8 text-xs gap-1"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Desconectar
+                    </Button>
+                  </div>
                 </div>
               ) : (
-                <div className="p-4 rounded-xl border border-dashed border-border/80 bg-muted/5 text-center space-y-3">
-                  <p className="text-xs text-muted-foreground">Nenhum perfil do Facebook Ads conectado ainda.</p>
-                  <Button onClick={() => setTokenModalOpen(true)} className="gradient-primary text-primary-foreground text-xs gap-1.5 h-9">
-                    <Plus className="h-4 w-4" /> Adicionar perfil
+                <div className="p-6 rounded-xl border border-dashed border-border/80 bg-muted/5 text-center space-y-3">
+                  <p className="text-xs text-muted-foreground">Nenhum perfil do Facebook conectado ainda.</p>
+                  <Button
+                    onClick={handleStartConnect}
+                    disabled={connecting}
+                    className="gradient-primary text-primary-foreground text-xs gap-2 h-10 px-5 shadow-lg shadow-primary/20 font-semibold"
+                  >
+                    {connecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Facebook className="h-4 w-4 fill-current" />
+                    )}
+                    Conectar com Facebook (Pop-up)
                   </Button>
                 </div>
               )}
 
-              {profileName && (
-                <Button onClick={() => setTokenModalOpen(true)} variant="outline" size="sm" className="text-xs gap-1 h-8">
-                  <Plus className="h-3.5 w-3.5" /> Atualizar / Trocar perfil
-                </Button>
-              )}
+              <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs text-muted-foreground">
+                <span>App ID configurado: <strong className="text-foreground font-mono">{localStorage.getItem(FB_APP_ID_KEY) || "Não definido"}</strong></span>
+                <button
+                  onClick={() => setAppIdModalOpen(true)}
+                  className="text-primary hover:underline flex items-center gap-1"
+                >
+                  <Settings className="h-3 w-3" /> Alterar App ID
+                </button>
+              </div>
             </CardContent>
           </Card>
 
@@ -301,11 +411,15 @@ export default function Integrations() {
                 Escolha a conta de anúncio para vincular a esta dashboard (<strong className="text-foreground">{current?.name}</strong>):
               </p>
 
-              {fbAccounts.length === 0 ? (
+              {loadingAccounts ? (
+                <div className="p-6 flex items-center justify-center text-xs text-muted-foreground gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" /> Carregando contas do Facebook...
+                </div>
+              ) : fbAccounts.length === 0 ? (
                 <div className="p-6 rounded-xl border border-dashed border-border text-center text-xs text-muted-foreground">
                   {profileName
-                    ? "Nenhuma conta de anúncios encontrada neste perfil."
-                    : "Conecte um perfil do Meta Ads acima para carregar suas contas de anúncios."}
+                    ? "Nenhuma conta de anúncios encontrada neste perfil do Facebook."
+                    : "Conecte o seu Facebook no botão acima para listar automaticamente suas contas de anúncios."}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -356,7 +470,7 @@ export default function Integrations() {
         </div>
       )}
 
-      {/* ABA 2: WEBHOOKS (Hotmart, Kiwify, etc.) */}
+      {/* ABA 2: WEBHOOKS */}
       {activeTab === "webhooks" && (
         <Card className="glass-card border-border">
           <CardHeader>
@@ -393,7 +507,7 @@ export default function Integrations() {
         </Card>
       )}
 
-      {/* ABA 3: UTMS (Parâmetros de URL Prontos para Meta Ads, Estilo UTMify) */}
+      {/* ABA 3: UTMS */}
       {activeTab === "utms" && (
         <Card className="glass-card border-border">
           <CardHeader>
@@ -431,7 +545,7 @@ export default function Integrations() {
         </Card>
       )}
 
-      {/* ABA 4: PIXEL & SCRIPT (Código da Página de Vendas) */}
+      {/* ABA 4: PIXEL & SCRIPT */}
       {activeTab === "pixel" && (
         <Card className="glass-card border-border">
           <CardHeader>
@@ -487,30 +601,33 @@ export default function Integrations() {
         </Card>
       )}
 
-      {/* Modal: Adicionar Perfil Facebook */}
-      <Dialog open={tokenModalOpen} onOpenChange={setTokenModalOpen}>
+      {/* Modal: Configurar Facebook App ID */}
+      <Dialog open={appIdModalOpen} onOpenChange={setAppIdModalOpen}>
         <DialogContent className="glass-card border-border max-w-md">
           <DialogHeader>
-            <DialogTitle>Conectar Perfil Meta Ads</DialogTitle>
+            <DialogTitle>Configurar Facebook App ID</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 text-left">
-            <p className="text-xs text-muted-foreground">
-              Cole abaixo o seu <strong>Access Token</strong> da Meta (com permissões <code>ads_read</code> e <code>ads_management</code>) para carregar suas contas de anúncio:
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Para abrir a janela oficial do Facebook no formato Pop-up (como a UTMify faz), insira o <strong>App ID</strong> da sua aplicação Meta for Developers:
             </p>
             <div className="space-y-1.5">
-              <Label className="text-xs">Meta Access Token</Label>
+              <Label className="text-xs">Facebook App ID</Label>
               <Input
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="EAA..."
-                className="font-mono text-xs"
+                value={appIdInput}
+                onChange={(e) => setAppIdInput(e.target.value)}
+                placeholder="Ex: 123456789012345"
+                className="font-mono text-sm"
               />
+              <p className="text-[11px] text-muted-foreground">
+                Encontrado em: <em>developers.facebook.com &gt; My Apps &gt; Configurações Básicas</em>.
+              </p>
             </div>
           </div>
           <DialogFooter className="pt-2">
-            <Button variant="outline" onClick={() => setTokenModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveToken} disabled={savingToken} className="gradient-primary text-primary-foreground">
-              {savingToken ? "Salvando..." : "Conectar Perfil"}
+            <Button variant="outline" onClick={() => setAppIdModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveAppIdAndOpen} className="gradient-primary text-primary-foreground gap-1.5">
+              <Facebook className="h-4 w-4 fill-current" /> Abrir Pop-up do Facebook
             </Button>
           </DialogFooter>
         </DialogContent>

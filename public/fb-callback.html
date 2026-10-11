@@ -1,0 +1,57 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Conectando ao Facebook...</title>
+  <style>
+    body {
+      background: #0d0d11;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(0, 255, 127, 0.2);
+      border-top-color: #00FF7F;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="spinner"></div>
+  <p style="font-size: 14px; color: #a1a1aa;">Autenticando e conectando suas contas de anúncio...</p>
+
+  <script>
+    (function() {
+      // 1. Extrair token do hash ou query params
+      var hash = window.location.hash.substring(1);
+      var params = new URLSearchParams(hash || window.location.search);
+      var accessToken = params.get('access_token');
+      var error = params.get('error_description') || params.get('error');
+
+      if (window.opener) {
+        if (accessToken) {
+          window.opener.postMessage({ type: 'FB_OAUTH_SUCCESS', token: accessToken }, '*');
+        } else if (error) {
+          window.opener.postMessage({ type: 'FB_OAUTH_ERROR', error: error }, '*');
+        }
+        setTimeout(function() { window.close(); }, 500);
+      } else {
+        document.body.innerHTML = '<p style="color:#00FF7F;">Autenticado com sucesso! Você pode fechar esta janela.</p>';
+      }
+    })();
+  </script>
+</body>
+</html>
