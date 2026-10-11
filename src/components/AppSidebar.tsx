@@ -1,14 +1,14 @@
 ﻿import {
-  LayoutDashboard, Megaphone, Video, Film, Music2,
-  LayoutGrid, Link2, Plug, Wrench, Percent, DollarSign,
-  FileText, Activity, Bell, Settings, LogOut, Radar, ChevronDown, Plus, ShoppingCart, Users, Bug
+  LayoutDashboard, Megaphone, Link2, ShoppingCart, Users, FileText,
+  Activity, Plug, Bell, Settings, LogOut, Radar, ChevronDown, Plus,
+  ShieldAlert, Sliders, Wrench, Percent, DollarSign, Crown, HelpCircle
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboard } from "@/contexts/DashboardContext";
 import { Badge } from "@/components/ui/badge";
 
-// Menu inspirado diretamente na UTMify
+// Menu 100% alinhado com a UTMify
 const navSections = [
   {
     title: "PRINCIPAL",
@@ -25,23 +25,22 @@ const navSections = [
     title: "TRACKING & DADOS",
     items: [
       { label: "Eventos", icon: Activity, href: "/tracking" },
-      { label: "Testar Tracking", icon: Bug, href: "/test-tracking" },
       { label: "Integrações", icon: Plug, href: "/integrations" },
+      { label: "Notificações", icon: Bell, href: "/notifications" },
     ],
   },
   {
     title: "CONFIGURAÇÕES",
     items: [
-      { label: "Dashboards", icon: LayoutGrid, href: "/dashboards" },
-      { label: "Notificações", icon: Bell, href: "/notifications" },
-      { label: "Configurações", icon: Settings, href: "/settings" },
+      { label: "Avançado (Dashboards)", icon: Settings, href: "/dashboards" },
+      { label: "Configurações da Conta", icon: Sliders, href: "/settings" },
     ],
   },
 ];
 
 export function AppSidebar() {
   const location = useLocation();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const { current, dashboards, selectDashboard } = useDashboard();
 
   return (
@@ -65,7 +64,7 @@ export function AppSidebar() {
         </Link>
       </div>
 
-      {/* 2. Seletor de Dashboard no estilo UTMify */}
+      {/* 2. Seletor de Dashboard no topo */}
       <div className="px-3 py-2.5 border-b border-border/40 bg-muted/10">
         <div className="flex items-center justify-between mb-1.5 px-1">
           <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase font-mono">
@@ -74,7 +73,7 @@ export function AppSidebar() {
           <Link
             to="/dashboards"
             className="text-[11px] text-primary hover:underline flex items-center gap-0.5"
-            title="Gerenciar Dashboards"
+            title="Gerenciar Dashboards em Avançado"
           >
             <Plus className="h-3 w-3" /> Gerir
           </Link>
@@ -85,7 +84,7 @@ export function AppSidebar() {
             to="/dashboards"
             className="flex items-center justify-between p-2 rounded-lg border border-dashed border-border/60 hover:border-primary/50 text-xs text-muted-foreground hover:text-foreground transition-all group"
           >
-            <span>+ Criar primeira dashboard</span>
+            <span>+ Criar dashboard</span>
             <Badge variant="outline" className="text-[9px]">Novo</Badge>
           </Link>
         ) : (
@@ -97,7 +96,7 @@ export function AppSidebar() {
             >
               {dashboards.map((d) => (
                 <option key={d.id} value={d.id} className="bg-card text-foreground">
-                  {d.name} ({d.currency}) {d.kind === "organic" ? "• Orgânica" : ""}
+                  {d.name} ({d.currency})
                 </option>
               ))}
             </select>
@@ -150,7 +149,9 @@ export function AppSidebar() {
       <div className="p-3 border-t border-border/40 bg-muted/5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11px] text-muted-foreground font-mono">Status: Online</span>
+          <span className="text-[11px] text-muted-foreground font-mono truncate max-w-[120px]">
+            {user?.email?.split("@")[0] || "Online"}
+          </span>
         </div>
         <button
           onClick={() => signOut()}
