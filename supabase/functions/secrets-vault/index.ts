@@ -1,6 +1,6 @@
 // Secure vault for third-party API tokens. Clients NEVER read raw values; they
 // only call this function to set/delete/check. The service role bypasses RLS.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

@@ -1,6 +1,6 @@
 // Facebook Ads control: read campaign metrics (with status + budget) and
 // apply changes (daily budget, pause/activate) straight from the app.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 import { getSecret, rateLimit, clientIp } from "../_shared/security.ts";
 
 const corsHeaders = {
