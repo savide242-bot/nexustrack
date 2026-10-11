@@ -1,5 +1,5 @@
 // Daily summary push: runs hourly via cron, fires for each user whose local time is 22:00.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

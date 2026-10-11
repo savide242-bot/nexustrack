@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 import webpush from "https://esm.sh/web-push@3.6.7";
 
 const corsHeaders = {
