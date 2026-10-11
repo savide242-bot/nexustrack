@@ -102,6 +102,11 @@ export default function Login() {
               Criar conta
             </Link>
           </p>
+          <div className="mt-6 pt-4 border-t border-border/40 text-center text-xs text-muted-foreground flex justify-center gap-4">
+            <Link to="/privacy" className="hover:text-primary underline">Política de Privacidade</Link>
+            <span>•</span>
+            <Link to="/terms" className="hover:text-primary underline">Termos de Serviço</Link>
+          </div>
         </CardContent>
       </Card>
     </div>
