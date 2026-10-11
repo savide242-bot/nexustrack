@@ -150,7 +150,7 @@ export default function Pages() {
     e.preventDefault();
     if (!user || !name || !url) return;
     setLoading(true);
-    const { error } = await supabase.from("pages").insert({ user_id: user.id, url, name });
+    const { error } = await supabase.from("pages").insert({ user_id: user.id, url, name, operation_id: activeId } as any);
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
     } else {
