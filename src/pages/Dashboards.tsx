@@ -147,6 +147,9 @@ export default function Dashboards() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">Conta de anúncios: {fb.accounts.find((a) => a.id.replace(/^act_/, "") === d.fb_ad_account_id)?.name || (d.fb_ad_account_id ? `act_${d.fb_ad_account_id}` : "nenhuma")} · Atribuição: {d.attribution_window_days} dias</p>
+                  <Button variant={isActive ? "secondary" : "default"} className="w-full gap-1" onClick={(e) => { e.stopPropagation(); select(); }}>
+                    {isActive ? "A ver esta dashboard" : "Abrir esta dashboard"}<ArrowRight className="h-4 w-4" />
+                  </Button>
                 </CardContent>
               </Card>
             );
