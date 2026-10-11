@@ -109,8 +109,10 @@ export default function Dashboards() {
             const goal = Number(d.revenue_goal || 0);
             const rev = convert(revenue[d.id] || 0, "MZN", d.currency, rates);
             const pct = goal > 0 ? Math.min(100, (rev / goal) * 100) : 0;
+            const isActive = activeId === d.id;
+            const select = () => { setActiveId(d.id); toast({ title: `Dashboard "${d.name}" activa`, description: "Todo o app agora mostra só os dados desta dashboard." }); navigate("/"); };
             return (
-              <Card key={d.id} className="border-border">
+              <Card key={d.id} onClick={select} className={`cursor-pointer transition-all hover:border-primary/60 ${isActive ? "border-primary ring-1 ring-primary/50" : "border-border"}`}>
                 <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
                   <div className="min-w-0">
                     <CardTitle className="text-base truncate flex items-center gap-2">
