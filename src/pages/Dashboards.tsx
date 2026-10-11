@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/EmptyState";
 import { CURRENCIES, convert, fetchRates, formatCurrency, type Rates } from "@/lib/currency";
-import { Copy, Facebook, LayoutDashboard, Loader2, Pencil, Plus } from "lucide-react";
+import { ArrowRight, Copy, Facebook, LayoutDashboard, Loader2, Pencil, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useFacebookConnect } from "@/hooks/use-facebook-connect";
 import { useDashboard } from "@/contexts/DashboardContext";
 
@@ -31,7 +32,8 @@ export default function Dashboards() {
   const { user } = useAuth();
   const { toast } = useToast();
   const fb = useFacebookConnect();
-  const { reload: reloadCtx } = useDashboard();
+  const navigate = useNavigate();
+  const { reload: reloadCtx, activeId, setActiveId } = useDashboard();
   const [items, setItems] = useState<Dash[]>([]);
   const [revenue, setRevenue] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
