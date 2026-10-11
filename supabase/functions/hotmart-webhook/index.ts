@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -128,6 +128,7 @@ Deno.serve(async (req) => {
     let campaignId: string | null = null;
     let userId: string | null = null;
     let leadId: string | null = null;
+    let dashboardId: string | null = req.url.includes('dash=') ? new URL(req.url).searchParams.get('dash') : null;
 
     if (hottok) {
       const { data: secret } = await supabase
@@ -136,7 +137,7 @@ Deno.serve(async (req) => {
       if (secret) userId = (secret as any).user_id;
     }
 
-    // No user found — skip (multi-tenant isolation)
+    // No user found â€” skip (multi-tenant isolation)
     if (!userId) {
       console.warn("Hotmart webhook skipped: no matching user", {
         event,
@@ -148,7 +149,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Lead attribution — filter only this user's leads
+    // Lead attribution â€” filter only this user's leads
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: leads } = await supabase
       .from("leads_clicks")
@@ -191,58 +192,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Resolve the operation (business unit) this sale belongs to, so amounts and
-    // notifications can be shown in that operation's own currency.
-    let operationId: string | null = null;
-    let operationCurrency: string | null = null;
-    const matchedLeadRow = userLeads.find((l) => l.id === leadId);
-    // 1) Explicit dashboard routing via ?op=<webhook_key> (must belong to this user)
-    const opKey = new URL(req.url).searchParams.get("op")?.trim();
-    if (opKey && /^[a-f0-9]{32}$/.test(opKey)) {
-      const { data: opRow } = await supabase
-        .from("operations").select("id").eq("webhook_key", opKey).eq("user_id", userId).maybeSingle();
-      operationId = (opRow as any)?.id ?? null;
-    }
-    if (!operationId && campaignId) {
-      const { data: camp } = await supabase
-        .from("campaigns").select("operation_id").eq("id", campaignId).maybeSingle();
-      operationId = (camp as any)?.operation_id ?? null;
-    }
-    if (!operationId && matchedLeadRow?.page_id) {
-      const { data: pg } = await supabase
-        .from("pages").select("operation_id").eq("id", matchedLeadRow.page_id).maybeSingle();
-      operationId = (pg as any)?.operation_id ?? null;
-    }
-    if (operationId) {
-      const { data: op } = await supabase
-        .from("operations").select("currency").eq("id", operationId).maybeSingle();
-      operationCurrency = (op as any)?.currency ?? null;
-    }
-
-    // Amount in the operation's currency (falls back to MZN display value)
-    let amountOperation = amountMzn;
-    let notifyCurrency = "MZN";
-    if (operationCurrency && operationCurrency !== "MZN") {
-      notifyCurrency = operationCurrency;
-      if (originalCurrency === operationCurrency) {
-        amountOperation = originalAmount;
-      } else {
-        try {
-          const r = await fetch(`https://open.er-api.com/v6/latest/${originalCurrency}`);
-          const d = await r.json();
-          const rate = d.rates?.[operationCurrency];
-          amountOperation = rate ? originalAmount * rate : amountMzn;
-          if (!rate) notifyCurrency = "MZN";
-        } catch {
-          amountOperation = amountMzn;
-          notifyCurrency = "MZN";
-        }
-      }
-    }
-    const formattedAmount = notifyCurrency === "MZN"
-      ? `${Math.round(amountOperation).toLocaleString("pt-MZ")} MT`
-      : `${notifyCurrency} ${amountOperation.toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
     const finalTransactionId = transactionId || `hotmart_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
     // IDEMPOTENCY: Check if sale already exists
@@ -279,8 +228,8 @@ Deno.serve(async (req) => {
     // Insert new sale
     const { data: sale, error: saleErr } = await supabase.from("sales").insert({
       campaign_id: campaignId,
+      dashboard_id: dashboardId,
       lead_id: leadId,
-      operation_id: operationId,
       user_id: userId,
       buyer_name: buyerName,
       buyer_email: buyerEmail,
@@ -311,8 +260,8 @@ Deno.serve(async (req) => {
       await supabase.from("notifications_log").insert({
         user_id: userId,
         sale_id: sale.id,
-        title: `💰 Nova venda!`,
-        body: `${buyerName || "Alguém"} pagou ${formattedAmount} em Hotmart`,
+        title: `ðŸ’° Nova venda!`,
+        body: `${buyerName || "AlguÃ©m"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
       });
 
       try {
@@ -325,8 +274,8 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({
             user_id: userId,
-            title: "💰 Nova venda!",
-            body: `${buyerName || "Alguém"} pagou ${formattedAmount} em Hotmart`,
+            title: "ðŸ’° Nova venda!",
+            body: `${buyerName || "AlguÃ©m"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
               kind: "sale",
           }),
         });
@@ -356,6 +305,7 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               campaign_id: campaignId,
+      dashboard_id: dashboardId,
               pixel_id: pixelId,
               access_token: accessToken,
               event_name: "Purchase",

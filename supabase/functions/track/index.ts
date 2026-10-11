@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,18 +21,15 @@ function classifySource(referrer: string, utmSource: string, utmMedium: string, 
   const med = utmMedium.toLowerCase();
   const cont = utmContent.toLowerCase();
 
-  // Instagram
   if (ref.includes("instagram.com") || ref.includes("l.instagram.com") || src === "instagram" || src === "ig") {
     if (cont.includes("story") || cont.includes("stories") || med === "story" || med === "stories") return "Instagram — Story";
     if (cont.includes("direct") || med === "direct") return "Instagram — Direct";
     if (cont.includes("bio") || cont.includes("link_bio") || med === "bio" || med === "linkinbio") return "Instagram — Bio Link";
     if (cont.includes("reel") || med === "reel" || med === "reels") return "Instagram — Reels";
     if (cont.includes("feed") || med === "feed") return "Instagram — Feed";
-    if (ref.includes("igshid=") || ref.includes("igsh=")) return "Instagram";
     return "Instagram";
   }
 
-  // Facebook
   if (ref.includes("facebook.com") || ref.includes("fb.com") || ref.includes("lm.facebook") || ref.includes("m.facebook") || src === "facebook" || src === "fb") {
     if (cont.includes("story") || med === "story" || med === "stories") return "Facebook — Story";
     if (cont.includes("feed") || med === "feed") return "Facebook — Feed";
@@ -40,43 +37,21 @@ function classifySource(referrer: string, utmSource: string, utmMedium: string, 
     return "Facebook";
   }
 
-  // Google
   if (ref.includes("google.") || src === "google") {
     if (med === "cpc" || med === "ppc") return "Google — Ads";
     if (med === "organic") return "Google — Orgânico";
     return "Google";
   }
 
-  // TikTok
   if (ref.includes("tiktok.com") || src === "tiktok") return "TikTok";
-  // YouTube
   if (ref.includes("youtube.com") || ref.includes("youtu.be") || src === "youtube") return "YouTube";
-  // Twitter/X
   if (ref.includes("twitter.com") || ref.includes("t.co") || ref.includes("x.com") || src === "twitter") return "Twitter/X";
-  // WhatsApp
   if (ref.includes("whatsapp") || src === "whatsapp") return "WhatsApp";
-  // Telegram
   if (ref.includes("telegram") || ref.includes("t.me") || src === "telegram") return "Telegram";
 
   if (utmSource) return utmSource;
   if (!referrer) return "Direto";
   return referrer.replace(/^https?:\/\//, "").split("/")[0];
-}
-
-async function resolveGeo(ip: string): Promise<{ country: string; city: string; state: string }> {
-  const fallback = { country: "", city: "", state: "" };
-  if (!ip || ip === "127.0.0.1" || ip === "::1") return fallback;
-  try {
-    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,regionName,city`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) return fallback;
-    const data = await res.json();
-    if (data.status !== "success") return fallback;
-    return { country: data.countryCode || "", city: data.city || "", state: data.regionName || "" };
-  } catch {
-    return fallback;
-  }
 }
 
 function extractIp(req: Request): string {
@@ -91,156 +66,119 @@ function extractIp(req: Request): string {
   return "";
 }
 
-async function hashSHA256(value: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(value.trim().toLowerCase());
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const body = await req.json();
-    const campaign_id = body.campaign_id && isValidUUID(body.campaign_id) ? body.campaign_id : null;
-    const page_id = body.page_id && isValidUUID(body.page_id) ? body.page_id : null;
-
-    if (!campaign_id && !page_id) {
-      return new Response(JSON.stringify({ error: "campaign_id or page_id required" }), { status: 400, headers: corsHeaders });
-    }
-
-    const ip = extractIp(req) || sanitize(body.ip_address, 45);
-    const geo = await resolveGeo(ip);
-
-    const referrer = sanitize(body.referrer, 2000);
-    const utmSource = sanitize(body.utm_source, 200);
-    const utmMedium = sanitize(body.utm_medium, 200);
-    const utmContent = sanitize(body.utm_content, 200);
-    const fbc = sanitize(body.fbc, 200);
-    const fbp = sanitize(body.fbp, 200);
-    const email = sanitize(body.email, 320);
-    const phone = sanitize(body.phone, 30);
-    const userName = sanitize(body.name, 200);
-    const userAgent = sanitize(body.user_agent, 500);
-
-    const detailedSource = classifySource(referrer, utmSource, utmMedium, utmContent);
-
+    const body = await req.json().catch(() => ({}));
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data, error } = await supabase.from("leads_clicks").insert({
+    const dashboard_id = isValidUUID(body.nx_dash || body.dashboard_id) ? (body.nx_dash || body.dashboard_id) : null;
+    const campaign_id = isValidUUID(body.campaign_id) ? body.campaign_id : null;
+    const page_id = isValidUUID(body.page_id) ? body.page_id : null;
+
+    const ip = extractIp(req) || sanitize(body.ip_address, 45);
+    const referrer = sanitize(body.referrer, 2000);
+    const utmSource = sanitize(body.utm_source, 200);
+    const utmMedium = sanitize(body.utm_medium, 200);
+    const utmCampaign = sanitize(body.utm_campaign, 200);
+    const utmContent = sanitize(body.utm_content, 200);
+    const utmTerm = sanitize(body.utm_term, 200);
+    const fbc = sanitize(body.fbc, 200);
+    const fbp = sanitize(body.fbp, 200);
+    const fbclid = sanitize(body.fbclid, 200);
+    const userAgent = sanitize(body.user_agent, 500);
+    const eventType = sanitize(body.event_type || "PageView", 100);
+
+    const detailedSource = classifySource(referrer, utmSource, utmMedium, utmContent);
+
+    // Identificar user_id a partir do dashboard se fornecido
+    let userId: string | null = null;
+    if (dashboard_id) {
+      const { data: dash } = await supabase.from("dashboards").select("user_id").eq("id", dashboard_id).maybeSingle();
+      if (dash) userId = dash.user_id;
+    }
+
+    // Incrementar contagem no link de tracking se existir correspondência
+    if (dashboard_id && utmCampaign) {
+      try {
+        const { data: linkRow } = await supabase
+          .from("tracking_links")
+          .select("id, clicks")
+          .eq("dashboard_id", dashboard_id)
+          .eq("utm_campaign", utmCampaign)
+          .maybeSingle();
+
+        if (linkRow) {
+          await supabase
+            .from("tracking_links")
+            .update({ clicks: (linkRow.clicks || 0) + 1 })
+            .eq("id", linkRow.id);
+        }
+      } catch (_) {}
+    }
+
+    // Inserir na tabela unificada events
+    if (dashboard_id && userId) {
+      try {
+        await supabase.from("events").insert({
+          dashboard_id,
+          user_id: userId,
+          event_type: eventType,
+          page_url: sanitize(body.page_url, 2000),
+          referrer,
+          utm_source: detailedSource || utmSource,
+          utm_medium: utmMedium,
+          utm_campaign: utmCampaign,
+          utm_content: utmContent,
+          utm_term: utmTerm,
+          source_classified: detailedSource,
+          ip_address: ip,
+          user_agent: userAgent,
+          fbc,
+          fbp,
+          fbclid,
+          email: sanitize(body.email, 320) || null,
+          phone: sanitize(body.phone, 50) || null,
+          name: sanitize(body.name, 200) || null,
+          value: Number(body.value) || null,
+          currency: sanitize(body.currency, 10) || null,
+          order_id: sanitize(body.order_id, 100) || null,
+          product_name: sanitize(body.product_name, 200) || null,
+          is_test: Boolean(body.is_test),
+        });
+      } catch (err) {
+        console.error("Events insert error:", err);
+      }
+    }
+
+    // Inserir em leads_clicks para compatibilidade com o sistema antigo
+    const { data: leadRow } = await supabase.from("leads_clicks").insert({
+      dashboard_id,
       campaign_id,
       page_id,
       page_url: sanitize(body.page_url, 2000),
-      fingerprint: sanitize(body.fingerprint, 100),
       ip_address: ip,
       user_agent: userAgent,
       referrer,
       utm_source: detailedSource || utmSource,
       utm_medium: utmMedium,
-      utm_campaign: sanitize(body.utm_campaign, 200),
+      utm_campaign: utmCampaign,
       utm_content: utmContent,
-      utm_term: sanitize(body.utm_term, 200),
+      utm_term: utmTerm,
       fbc,
       fbp,
-      email,
-      phone,
-      name: userName,
-      city: geo.city || sanitize(body.city, 100),
-      state: geo.state || sanitize(body.state, 100),
-      country: geo.country || sanitize(body.country, 5),
-      zip_code: sanitize(body.zip_code, 20),
-    }).select("id").single();
+      email: sanitize(body.email, 320) || null,
+      phone: sanitize(body.phone, 50) || null,
+      name: sanitize(body.name, 200) || null,
+    }).select("id").maybeSingle();
 
-    if (error) throw error;
-
-    // Dedupe PageView per lead — only fire once per new lead row created
-    const pageViewEventId = `pv_${data.id}`;
-
-    // --- Send PageView to Meta CAPI ---
-    // Find the page owner's pixel config
-    let pixelId: string | null = null;
-    let accessToken: string | null = null;
-    let userId: string | null = null;
-
-    if (page_id) {
-      const { data: pageData } = await supabase.from("pages").select("user_id, campaign_id").eq("id", page_id).single();
-      if (pageData) {
-        userId = pageData.user_id;
-        // Check campaign-level pixel first
-        if (pageData.campaign_id) {
-          const { data: camp } = await supabase.from("campaigns").select("meta_pixel_id, meta_access_token").eq("id", pageData.campaign_id).single();
-          if (camp?.meta_pixel_id && camp?.meta_access_token) {
-            pixelId = camp.meta_pixel_id;
-            accessToken = camp.meta_access_token;
-          }
-        }
-        // Fallback to profile-level pixel
-        if (!pixelId && userId) {
-          const { data: prof } = await supabase.from("profiles").select("meta_pixel_id, meta_access_token").eq("user_id", userId).single();
-          if (prof?.meta_pixel_id && prof?.meta_access_token) {
-            pixelId = prof.meta_pixel_id;
-            accessToken = prof.meta_access_token;
-          }
-        }
-      }
-    } else if (campaign_id) {
-      const { data: camp } = await supabase.from("campaigns").select("user_id, meta_pixel_id, meta_access_token").eq("id", campaign_id).single();
-      if (camp) {
-        userId = camp.user_id;
-        if (camp.meta_pixel_id && camp.meta_access_token) {
-          pixelId = camp.meta_pixel_id;
-          accessToken = camp.meta_access_token;
-        } else {
-          const { data: prof } = await supabase.from("profiles").select("meta_pixel_id, meta_access_token").eq("user_id", camp.user_id).single();
-          if (prof?.meta_pixel_id && prof?.meta_access_token) {
-            pixelId = prof.meta_pixel_id;
-            accessToken = prof.meta_access_token;
-          }
-        }
-      }
-    }
-
-    if (pixelId && accessToken) {
-      try {
-        const capiUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/meta-capi`;
-        await fetch(capiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          },
-          body: JSON.stringify({
-            campaign_id,
-            pixel_id: pixelId,
-            access_token: accessToken,
-            event_name: "PageView",
-            user_id: userId,
-            event_id: pageViewEventId,
-            event_data: {
-              email,
-              phone,
-              name: userName,
-              country: geo.country || sanitize(body.country, 5),
-              city: geo.city || sanitize(body.city, 100),
-              state: geo.state || sanitize(body.state, 100),
-              ip_address: ip,
-              user_agent: userAgent,
-              fbc,
-              fbp,
-              fingerprint: sanitize(body.fingerprint, 100),
-            },
-          }),
-        });
-      } catch (capiErr) {
-        console.error("PageView CAPI error:", capiErr);
-      }
-    }
-
-    return new Response(JSON.stringify({ lead_id: data.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true, lead_id: leadRow?.id }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (e: any) {
     console.error("Track error:", e);
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });

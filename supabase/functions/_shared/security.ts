@@ -1,6 +1,6 @@
 // Shared helper to read user secrets from the vault.
 // Only callable from edge functions using the service role.
-import { SupabaseClient } from "npm:@supabase/supabase-js@2.95.0";
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 export async function getSecret(
   admin: SupabaseClient,

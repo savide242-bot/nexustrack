@@ -5,7 +5,6 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RevenueProgress } from "@/components/RevenueProgress";
-import { DashboardSwitcher } from "@/components/DashboardSwitcher";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 
 function ShortcutsBridge() {
@@ -23,8 +22,7 @@ function MobileHeader() {
         <span className="sr-only">Menu</span>
       </Button>
       <span className="font-display font-bold neon-text">NexusTrack</span>
-      <div className="ml-auto flex items-center gap-2">
-        <DashboardSwitcher />
+      <div className="ml-auto">
         <RevenueProgress />
       </div>
     </div>
@@ -33,8 +31,7 @@ function MobileHeader() {
 
 function DesktopHeader() {
   return (
-    <div className="hidden md:flex items-center justify-between gap-4 border-b border-border px-6 py-3">
-      <DashboardSwitcher />
+    <div className="hidden md:flex items-center justify-end border-b border-border px-6 py-3">
       <RevenueProgress />
     </div>
   );

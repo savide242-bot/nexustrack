@@ -1,6 +1,5 @@
-// Facebook Ads control: read campaign metrics (with status + budget) and
-// apply changes (daily budget, pause/activate) straight from the app.
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+﻿// Facebook Ads control: read campaign/adset metrics and apply changes.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { getSecret, rateLimit, clientIp } from "../_shared/security.ts";
 
 const corsHeaders = {
@@ -34,11 +33,11 @@ Deno.serve(async (req) => {
     if (!userId) return json({ error: "Unauthorized" }, 401);
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const allowed = await rateLimit(admin, `fb-ads-control:${userId}:${clientIp(req)}`, 60, 60);
+    const allowed = await rateLimit(admin, `fb-ads-control:${userId}:${clientIp(req)}`, 120, 60);
     if (!allowed) return json({ error: "Rate limit" }, 429);
 
     const token = await getSecret(admin, userId, "meta_access_token");
-    if (!token) return json({ error: "Conta do Facebook não conectada", code: "not_connected" }, 200);
+    if (!token) return json({ error: "Conta do Facebook não conectada" }, 400);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
@@ -56,24 +55,7 @@ Deno.serve(async (req) => {
       } catch (_) { /* best effort */ }
     };
 
-    // ---- Read: ad accounts the connected Facebook user can manage ----
-    if (action === "accounts") {
-      const res = await fetch(
-        `${GRAPH}/me/adaccounts?fields=id,account_id,name,currency,account_status,business_name&limit=200&access_token=${token}`,
-      );
-      const data = await res.json();
-      if (data.error) return fbErr(data.error);
-      const ad_accounts = (data.data || []).map((a: any) => ({
-        id: String(a.account_id || a.id || "").replace(/^act_/, ""),
-        name: a.name,
-        currency: a.currency,
-        account_status: a.account_status,
-        business_name: a.business_name || null,
-      }));
-      return json({ ad_accounts });
-    }
-
-    // ---- Read: campaigns with insights, status and budget ----
+    // ---- Read: campaigns ----
     if (action === "campaigns") {
       const accountId = normalizeAccount(String(body.ad_account_id || ""));
       if (!accountId) return json({ error: "ad_account_id required" }, 400);
@@ -86,8 +68,8 @@ Deno.serve(async (req) => {
 
       const [listRes, insRes, accRes] = await Promise.all([fetch(listUrl), fetch(insightsUrl), fetch(accountUrl)]);
       const [list, ins, acc] = await Promise.all([listRes.json(), insRes.json(), accRes.json()]);
-      if (list.error) return fbErr(list.error);
-      if (ins.error) return fbErr(ins.error);
+      if (list.error) return json({ error: list.error.message }, 400);
+      if (ins.error) return json({ error: ins.error.message }, 400);
 
       const byId = new Map<string, any>();
       for (const row of ins.data || []) byId.set(row.campaign_id, row);
@@ -125,7 +107,47 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ---- Write: daily budget ----
+    // ---- Read: adsets for a campaign ----
+    if (action === "adsets") {
+      const campaignId = String(body.campaign_id || "").replace(/[^0-9]/g, "");
+      if (!campaignId) return json({ error: "campaign_id required" }, 400);
+      const preset = /^[a-z0-9_]{2,30}$/.test(String(body.date_preset || "")) ? String(body.date_preset) : "last_7d";
+
+      const listUrl = `${GRAPH}/${campaignId}/adsets?fields=id,name,status,effective_status,daily_budget&limit=100&access_token=${token}`;
+      const insightsFields = "adset_id,adset_name,spend,impressions,clicks,ctr,actions,purchase_roas,action_values";
+      const insightsUrl = `${GRAPH}/${campaignId}/insights?fields=${insightsFields}&date_preset=${preset}&level=adset&limit=100&access_token=${token}`;
+
+      const [listRes, insRes] = await Promise.all([fetch(listUrl), fetch(insightsUrl)]);
+      const [list, ins] = await Promise.all([listRes.json(), insRes.json()]);
+      if (list.error) return json({ error: list.error.message }, 400);
+      if (ins.error) return json({ error: ins.error.message }, 400);
+
+      const byId = new Map<string, any>();
+      for (const row of ins.data || []) byId.set(row.adset_id, row);
+
+      const adsets = (list.data || []).map((a: any) => {
+        const i = byId.get(a.id) || {};
+        const purchases = Number(i.actions?.find((ac: any) => ac.action_type === "purchase")?.value || 0);
+        const roas = Number(i.purchase_roas?.[0]?.value || 0);
+        return {
+          adset_id: a.id,
+          adset_name: a.name,
+          status: a.status,
+          effective_status: a.effective_status,
+          daily_budget: a.daily_budget ? Number(a.daily_budget) / 100 : null,
+          spend: Number(i.spend || 0),
+          impressions: Number(i.impressions || 0),
+          clicks: Number(i.clicks || 0),
+          ctr: Number(i.ctr || 0),
+          purchases,
+          roas,
+        };
+      });
+
+      return json({ adsets });
+    }
+
+    // ---- Write: campaign daily budget ----
     if (action === "set_budget") {
       const campaignId = String(body.campaign_id || "").replace(/[^0-9]/g, "");
       const amount = Number(body.daily_budget);
@@ -138,12 +160,30 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ daily_budget: Math.round(amount * 100), access_token: token }),
       });
       const data = await res.json();
-      if (data.error) return fbErr(data.error);
+      if (data.error) return json({ error: data.error.message }, 400);
       await audit(campaignId, { daily_budget: amount });
       return json({ ok: true });
     }
 
-    // ---- Write: pause / activate ----
+    // ---- Write: adset daily budget ----
+    if (action === "set_adset_budget") {
+      const adsetId = String(body.adset_id || "").replace(/[^0-9]/g, "");
+      const amount = Number(body.daily_budget);
+      if (!adsetId) return json({ error: "adset_id required" }, 400);
+      if (!isFinite(amount) || amount <= 0 || amount > 100000) return json({ error: "Orçamento inválido" }, 400);
+
+      const res = await fetch(`${GRAPH}/${adsetId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ daily_budget: Math.round(amount * 100), access_token: token }),
+      });
+      const data = await res.json();
+      if (data.error) return json({ error: data.error.message }, 400);
+      await audit(adsetId, { adset_daily_budget: amount });
+      return json({ ok: true });
+    }
+
+    // ---- Write: campaign pause / activate ----
     if (action === "set_status") {
       const campaignId = String(body.campaign_id || "").replace(/[^0-9]/g, "");
       const status = String(body.status || "").toUpperCase();
@@ -156,8 +196,26 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ status, access_token: token }),
       });
       const data = await res.json();
-      if (data.error) return fbErr(data.error);
+      if (data.error) return json({ error: data.error.message }, 400);
       await audit(campaignId, { status });
+      return json({ ok: true });
+    }
+
+    // ---- Write: adset pause / activate ----
+    if (action === "set_adset_status") {
+      const adsetId = String(body.adset_id || "").replace(/[^0-9]/g, "");
+      const status = String(body.status || "").toUpperCase();
+      if (!adsetId) return json({ error: "adset_id required" }, 400);
+      if (!["ACTIVE", "PAUSED"].includes(status)) return json({ error: "Status inválido" }, 400);
+
+      const res = await fetch(`${GRAPH}/${adsetId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, access_token: token }),
+      });
+      const data = await res.json();
+      if (data.error) return json({ error: data.error.message }, 400);
+      await audit(adsetId, { adset_status: status });
       return json({ ok: true });
     }
 
@@ -167,11 +225,3 @@ Deno.serve(async (req) => {
     return json({ error: e.message }, 500);
   }
 });
-
-function fbErr(e: any) {
-  const perm = e?.code === 200 || e?.code === 190 || /permission/i.test(e?.message || "");
-  return new Response(JSON.stringify({
-    error: perm ? "O Facebook não deu permissão para ver as contas de anúncio. Clica em 'Ligar Facebook' de novo e aceita todas as permissões (ads_read, ads_management, business_management)." : (e?.message || "Erro do Facebook"),
-    code: perm ? "missing_permissions" : "fb_error",
-  }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}

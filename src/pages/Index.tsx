@@ -1,19 +1,15 @@
-import { useDashboard, scopeOp } from "@/contexts/DashboardContext";
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, TrendingUp, Users, Target, BarChart3 } from "lucide-react";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { DollarSign, ShoppingCart, TrendingUp, Users, Target, BarChart3, RefreshCw, Zap } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
 import { DeltaBadge } from "@/components/DeltaBadge";
-import { TopProducts } from "@/components/dashboard/TopProducts";
-import { SalesHeatmap } from "@/components/dashboard/SalesHeatmap";
-import { Funnel } from "@/components/dashboard/Funnel";
-import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
-import { formatMzn, pctDelta } from "@/lib/format";
-
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 
 interface MetricCardProps {
   title: string;
@@ -45,225 +41,224 @@ function MetricCard({ title, value, icon: Icon, delta, tip }: MetricCardProps) {
   );
 }
 
-const SOURCE_COLORS = [
-  "hsl(150,100%,50%)", "hsl(200,80%,50%)", "hsl(280,80%,60%)", "hsl(40,90%,50%)",
-  "hsl(0,80%,55%)", "hsl(170,70%,45%)", "hsl(320,70%,55%)", "hsl(60,80%,50%)",
-];
-
-function MiniDonut({ percent, color, size = 36 }: { percent: number; color: string; size?: number }) {
-  const r = (size - 6) / 2;
-  const circ = 2 * Math.PI * r;
-  const filled = circ * (percent / 100);
-  return (
-    <svg width={size} height={size} className="flex-shrink-0">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(0,0%,18%)" strokeWidth={4} />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={4}
-        strokeDasharray={`${filled} ${circ - filled}`} strokeDashoffset={circ / 4} strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SourceRow({ name, count, total, color }: { name: string; count: number; total: number; color: string }) {
-  const pct = total > 0 ? (count / total) * 100 : 0;
-  return (
-    <div className="flex items-center gap-3 py-2 px-1 rounded-lg hover:bg-secondary/30 transition-colors">
-      <MiniDonut percent={pct} color={color} />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{name}</p>
-        <p className="text-xs text-muted-foreground">{count} visitas</p>
-      </div>
-      <span className="text-sm font-bold text-foreground tabular-nums">{pct.toFixed(0)}%</span>
-    </div>
-  );
-}
-
-interface Sale {
-  created_at: string;
-  sale_date: string | null;
-  amount_mzn: number | string | null;
-  status: string;
-  product_name: string | null;
-}
-
-const isRevenueSale = (s: Sale) => ["approved", "realized"].includes(s.status) && Number(s.amount_mzn) > 0;
-
 export default function Index() {
   const { user } = useAuth();
-  const { activeId } = useDashboard();
-  const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [prevSales, setPrevSales] = useState<Sale[]>([]);
-  const [totalLeads, setTotalLeads] = useState(0);
-  const [prevLeads, setPrevLeads] = useState(0);
-  const [totalCtas, setTotalCtas] = useState(0);
-  const [utmSources, setUtmSources] = useState<{ name: string; value: number }[]>([]);
-  const [dailySales, setDailySales] = useState<{ date: string; vendas: number }[]>([]);
+  const { current, fmt, cv } = useDashboard();
+  const [range, setRange] = useState<DateRange>(getDefaultRange());
+  const [loading, setLoading] = useState(true);
+
+  // Dados carregados
+  const [sales, setSales] = useState<any[]>([]);
+  const [leadsCount, setLeadsCount] = useState(0);
+  const [fbSpend, setFbSpend] = useState(0);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+
+  const loadData = async () => {
+    if (!user || !current) return;
+    setLoading(true);
+
+    const fromIso = range.from.toISOString();
+    const toIso = range.to.toISOString();
+
+    // 1. Carregar vendas da dashboard
+    let salesQuery = supabase
+      .from("sales")
+      .select("*")
+      .eq("user_id", user.id)
+      .gte("sale_date", fromIso)
+      .lte("sale_date", toIso);
+
+    if (current.id) {
+      salesQuery = salesQuery.or(`dashboard_id.eq.${current.id},dashboard_id.is.null`);
+    }
+
+    const { data: salesData } = await salesQuery;
+    setSales(salesData || []);
+
+    // 2. Carregar leads da dashboard
+    let leadsQuery = supabase
+      .from("leads_clicks")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", fromIso)
+      .lte("created_at", toIso);
+
+    if (current.id) {
+      leadsQuery = leadsQuery.or(`dashboard_id.eq.${current.id},dashboard_id.is.null`);
+    }
+
+    const { count } = await leadsQuery;
+    setLeadsCount(count || 0);
+
+    // 3. Se houver conta do Facebook Ads associada à Dashboard, carregar investimento real
+    if (current.fb_ad_account_id) {
+      try {
+        const { data: fbData } = await supabase.functions.invoke("fb-ads-control", {
+          body: { action: "campaigns", ad_account_id: current.fb_ad_account_id, date_preset: "last_7d" },
+        });
+
+        if (fbData?.campaigns) {
+          setCampaigns(fbData.campaigns);
+          const totalSpend = (fbData.campaigns || []).reduce((acc: number, c: any) => {
+            const accCurr = fbData.account?.currency || "USD";
+            return acc + cv(c.spend || 0, accCurr);
+          }, 0);
+          setFbSpend(totalSpend);
+        }
+      } catch (e) {
+        console.error("Erro ao puxar FB Ads:", e);
+      }
+    } else {
+      setFbSpend(0);
+      setCampaigns([]);
+    }
+
+    setLoading(false);
+  };
 
   useEffect(() => {
-    if (!user) return;
-    const from = dateRange.from;
-    const to = dateRange.to;
-    const span = to.getTime() - from.getTime();
-    const prevFrom = new Date(from.getTime() - span);
-    const prevTo = from;
+    loadData();
+  }, [user, current, range]);
 
-    const fetchAll = async () => {
-      const [
-        { data: curSales },
-        { data: prSales },
-        { count: leadsCount },
-        { count: prevLeadsCount },
-        { count: ctaCount },
-        { data: leads },
-      ] = await Promise.all([
-        scopeOp((supabase.from("sales") as any).select("created_at, sale_date, amount_mzn, status, product_name"), activeId).gte("sale_date", from.toISOString()).lte("sale_date", to.toISOString()),
-        scopeOp((supabase.from("sales") as any).select("created_at, sale_date, amount_mzn, status, product_name"), activeId).gte("sale_date", prevFrom.toISOString()).lt("sale_date", prevTo.toISOString()),
-        scopeOp(supabase.from("leads_clicks").select("*", { count: "exact", head: true }), activeId).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
-        scopeOp(supabase.from("leads_clicks").select("*", { count: "exact", head: true }), activeId).gte("created_at", prevFrom.toISOString()).lt("created_at", prevTo.toISOString()),
-        scopeOp(supabase.from("cta_clicks").select("*", { count: "exact", head: true }), activeId).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
-        scopeOp(supabase.from("leads_clicks").select("utm_source"), activeId).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
-      ]);
+  // Cálculos consolidados da Dashboard
+  const metrics = useMemo(() => {
+    const validSales = sales.filter((s) => s.status === "approved" || s.status === "realized");
+    const grossRevenue = validSales.reduce((sum, s) => sum + cv(Number(s.original_amount || 0), s.original_currency || "USD"), 0);
 
-      setSales((curSales as Sale[]) || []);
-      setPrevSales((prSales as Sale[]) || []);
-      setTotalLeads(leadsCount || 0);
-      setPrevLeads(prevLeadsCount || 0);
-      setTotalCtas(ctaCount || 0);
+    const refundedSales = sales.filter((s) => s.status === "refunded");
+    const refundAmount = refundedSales.reduce((sum, s) => sum + cv(Number(s.original_amount || 0), s.original_currency || "USD"), 0);
 
-      // Daily series across the range (cap at 30 buckets)
-      const dayCount = Math.min(30, Math.max(7, Math.ceil(span / 86400000)));
-      const buckets = Array.from({ length: dayCount }, (_, i) => {
-        const d = new Date(to);
-        d.setDate(d.getDate() - (dayCount - 1 - i));
-        return d.toISOString().split("T")[0];
-      });
-      setDailySales(buckets.map((date) => ({
-        date: date.slice(5),
-        vendas: ((curSales as Sale[]) || [])
-          .filter((s) => (s.sale_date || s.created_at).startsWith(date) && isRevenueSale(s))
-          .reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0),
-      })));
+    const netRevenue = grossRevenue - refundAmount;
+    const spend = fbSpend;
+    const profit = netRevenue - spend - (current?.product_cost || 0) * validSales.length;
 
-      if (leads) {
-        const sourceMap: Record<string, number> = {};
-        leads.forEach((l) => {
-          const src = l.utm_source || "Direto";
-          sourceMap[src] = (sourceMap[src] || 0) + 1;
-        });
-        setUtmSources(
-          Object.entries(sourceMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
-        );
-      }
+    const roas = spend > 0 ? netRevenue / spend : 0;
+    const roi = spend > 0 ? (profit / spend) * 100 : 0;
+    const cpa = validSales.length > 0 && spend > 0 ? spend / validSales.length : 0;
+    const ticketMedio = validSales.length > 0 ? netRevenue / validSales.length : 0;
+
+    return {
+      grossRevenue,
+      netRevenue,
+      refundAmount,
+      spend,
+      profit,
+      roas,
+      roi,
+      cpa,
+      ticketMedio,
+      salesCount: validSales.length,
+      refundCount: refundedSales.length,
     };
+  }, [sales, fbSpend, current, cv]);
 
-    fetchAll();
-
-    const channel = supabase
-      .channel(`dashboard-${crypto.randomUUID()}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sales" }, () => fetchAll())
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user, dateRange, activeId]);
-
-  // Current metrics
-  const paidSales = sales.filter(isRevenueSale);
-  const totalSales = paidSales.length;
-  const totalMzn = paidSales.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0);
-
-  const prevPaid = prevSales.filter(isRevenueSale);
-  const prevSalesCount = prevPaid.length;
-  const prevMzn = prevPaid.reduce((sum, s) => sum + (Number(s.amount_mzn) || 0), 0);
-
-  const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0;
-  const prevConversion = prevLeads > 0 ? (prevSalesCount / prevLeads) * 100 : 0;
-  const avgTicket = totalSales > 0 ? totalMzn / totalSales : 0;
-  const prevAvgTicket = prevSalesCount > 0 ? prevMzn / prevSalesCount : 0;
-  const totalVisits = utmSources.reduce((s, u) => s + u.value, 0);
+  // Meta de Faturamento
+  const goalProgress = useMemo(() => {
+    const goal = current?.revenue_goal || 0;
+    if (goal <= 0) return { pct: 0, remaining: 0, goal: 0 };
+    const pct = Math.min(Math.round((metrics.netRevenue / goal) * 100), 100);
+    const remaining = Math.max(goal - metrics.netRevenue, 0);
+    return { pct, remaining, goal };
+  }, [current, metrics.netRevenue]);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Visão geral das suas métricas em tempo real</p>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl font-bold text-foreground">
+              {current?.name || "Dashboard"}
+            </h1>
+            <span className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted/40 font-mono">
+              {current?.currency || "MZN"}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Métricas de tráfego, vendas e faturamento isoladas em tempo real.
+          </p>
         </div>
-        <DateFilter value={dateRange} onChange={setDateRange} />
+        <div className="flex items-center gap-2">
+          <DateFilter value={range} onChange={setRange} />
+          <Button variant="outline" size="icon" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
 
-      <OnboardingChecklist />
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard title="Vendas (MZN)" value={formatMzn(totalMzn)} icon={DollarSign} delta={pctDelta(totalMzn, prevMzn)} tip="Receita total convertida em Meticais. Exclui reembolsos e cancelamentos." />
-        <MetricCard title="Total Vendas" value={String(totalSales)} icon={ShoppingCart} delta={pctDelta(totalSales, prevSalesCount)} tip="Número de vendas aprovadas/realizadas com valor > 0 no período." />
-        <MetricCard title="Leads" value={String(totalLeads)} icon={Users} delta={pctDelta(totalLeads, prevLeads)} tip="Visitantes únicos rastreados pelo pixel/script no período." />
-        <MetricCard title="Conversão" value={`${conversionRate.toFixed(1)}%`} icon={Target} delta={pctDelta(conversionRate, prevConversion)} tip="Vendas ÷ Leads. Mostra que percentagem dos visitantes comprou." />
-        <MetricCard title="Ticket Médio" value={formatMzn(avgTicket)} icon={TrendingUp} delta={pctDelta(avgTicket, prevAvgTicket)} tip="Receita média por venda (MZN ÷ nº vendas)." />
-        <MetricCard title="ROI" value="—" icon={BarChart3} tip="Retorno sobre investimento. Será calculado quando ligares uma conta Meta Ads em Campanhas." />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Barra de Progresso da Meta */}
+      {goalProgress.goal > 0 && (
         <Card className="glass-card border-border">
-          <CardHeader><CardTitle className="font-display text-lg">Vendas Diárias (MZN)</CardTitle></CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dailySales}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,18%)" />
-                  <XAxis dataKey="date" stroke="hsl(0,0%,55%)" fontSize={12} />
-                  <YAxis stroke="hsl(0,0%,55%)" fontSize={12} />
-                  <Tooltip contentStyle={{ background: "hsl(0,0%,9%)", border: "1px solid hsl(0,0%,18%)", borderRadius: 8 }} labelStyle={{ color: "hsl(0,0%,95%)" }} />
-                  <Line type="monotone" dataKey="vendas" stroke="hsl(150,100%,50%)" strokeWidth={2} dot={{ fill: "hsl(150,100%,50%)" }} />
-                </LineChart>
-              </ResponsiveContainer>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex justify-between items-center text-sm">
+              <span className="font-semibold flex items-center gap-1.5">
+                <Target className="h-4 w-4 text-primary" /> Meta de Faturamento ({current?.revenue_goal_period})
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">
+                <strong className="text-foreground">{fmt(metrics.netRevenue)}</strong> de {fmt(goalProgress.goal)} ({goalProgress.pct}%)
+              </span>
+            </div>
+            <Progress value={goalProgress.pct} className="h-2.5" />
+            <div className="flex justify-between text-[11px] text-muted-foreground">
+              <span>Falta: {fmt(goalProgress.remaining)}</span>
+              <span>{goalProgress.pct >= 100 ? "🎉 Meta Batida!" : `${100 - goalProgress.pct}% restante`}</span>
             </div>
           </CardContent>
         </Card>
+      )}
 
-        <Card className="glass-card border-border">
-          <CardHeader><CardTitle className="font-display text-lg">Origem do Tráfego</CardTitle></CardHeader>
-          <CardContent>
-            <div className="h-64 overflow-y-auto">
-              {utmSources.length > 0 ? (
-                <div className="space-y-1">
-                  {utmSources.map((src, i) => (
-                    <SourceRow key={src.name} name={src.name} count={src.value} total={totalVisits} color={SOURCE_COLORS[i % SOURCE_COLORS.length]} />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de UTM ainda</div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Grid de KPIs Consolidados */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          title="Faturamento Líquido"
+          value={fmt(metrics.netRevenue)}
+          icon={DollarSign}
+          tip="Receita aprovada subtraída de reembolsos."
+        />
+        <MetricCard
+          title="Investimento em Ads"
+          value={fmt(metrics.spend)}
+          icon={TrendingUp}
+          tip="Gasto reportado pela conta do Facebook vinculada a esta dashboard."
+        />
+        <MetricCard
+          title="Lucro Estimado"
+          value={fmt(metrics.profit)}
+          icon={BarChart3}
+          tip="Receita líquida subtraída de gasto em anúncios e custos de produtos."
+        />
+        <MetricCard
+          title="ROAS Real"
+          value={metrics.roas > 0 ? `${metrics.roas.toFixed(2)}x` : "—"}
+          icon={Zap}
+          tip="Faturamento líquido dividido pelo investimento em anúncios."
+        />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="glass-card border-border lg:col-span-1">
-          <CardHeader><CardTitle className="font-display text-lg">Top 3 Produtos</CardTitle></CardHeader>
-          <CardContent><TopProducts sales={sales} /></CardContent>
-        </Card>
-
-        <Card className="glass-card border-border lg:col-span-1">
-          <CardHeader><CardTitle className="font-display text-lg">Funil de Conversão</CardTitle></CardHeader>
-          <CardContent>
-            <Funnel
-              steps={[
-                { label: "Visitantes", value: totalLeads },
-                { label: "Cliques em CTA", value: totalCtas },
-                { label: "Vendas", value: totalSales },
-              ]}
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card border-border lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Hora de Pico</CardTitle>
-            <p className="text-xs text-muted-foreground">Receita por dia × hora</p>
-          </CardHeader>
-          <CardContent><SalesHeatmap sales={sales} /></CardContent>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          title="Vendas Aprovadas"
+          value={metrics.salesCount.toLocaleString()}
+          icon={ShoppingCart}
+          tip="Total de pedidos confirmados nesta dashboard."
+        />
+        <MetricCard
+          title="Ticket Médio"
+          value={fmt(metrics.ticketMedio)}
+          icon={DollarSign}
+          tip="Média gasta por cliente em cada pedido."
+        />
+        <MetricCard
+          title="CPA (Custo por Venda)"
+          value={metrics.cpa > 0 ? fmt(metrics.cpa) : "—"}
+          icon={Target}
+          tip="Investimento em anúncios dividido pelo total de vendas aprovadas."
+        />
+        <MetricCard
+          title="Leads / Visitantes"
+          value={leadsCount.toLocaleString()}
+          icon={Users}
+          tip="Visitas e leads únicos registrados no tracking desta dashboard."
+        />
       </div>
     </div>
   );

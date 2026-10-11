@@ -1,48 +1,112 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+﻿import { createContext, useContext, useCallback, useEffect, useState, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { fetchRates, type Rates, formatCurrency, convert } from "@/lib/currency";
 
-export interface DashboardOption { id: string; name: string; currency: string; color: string; kind: string; fb_ad_account_id: string | null }
-
-interface Ctx {
-  dashboards: DashboardOption[];
-  activeId: string | null; // null = Geral (todas)
-  active: DashboardOption | null;
-  setActiveId: (id: string | null) => void;
-  reload: () => void;
+export interface Dashboard {
+  id: string;
+  user_id: string;
+  name: string;
+  language: string;
+  currency: string;
+  timezone: string;
+  kind: string;
+  fb_ad_account_id: string | null;
+  fb_ad_account_name: string | null;
+  fb_account_currency: string | null;
+  fb_connected_at: string | null;
+  revenue_goal: number;
+  revenue_goal_period: string;
+  revenue_goal_metric: string;
+  product_cost: number;
+  payment_fee_pct: number;
+  other_costs: number;
+  webhook_secret: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-const DashboardCtx = createContext<Ctx>({ dashboards: [], activeId: null, active: null, setActiveId: () => {}, reload: () => {} });
-const KEY = "nexus.activeDashboard";
+interface DashboardContextType {
+  dashboards: Dashboard[];
+  current: Dashboard | null;
+  loading: boolean;
+  rates: Rates;
+  selectDashboard: (id: string) => void;
+  reloadDashboards: () => Promise<void>;
+  fmt: (n: number) => string;
+  cv: (amount: number, from: string) => number;
+}
+
+const DashboardContext = createContext<DashboardContextType>({
+  dashboards: [],
+  current: null,
+  loading: true,
+  rates: { USD: 1 },
+  selectDashboard: () => {},
+  reloadDashboards: async () => {},
+  fmt: (n) => String(n),
+  cv: (n) => n,
+});
+
+export const useDashboard = () => useContext(DashboardContext);
+
+const SELECTED_KEY = "nx_selected_dashboard";
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [dashboards, setDashboards] = useState<DashboardOption[]>([]);
-  const [activeId, setActive] = useState<string | null>(() => localStorage.getItem(KEY));
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    try { return localStorage.getItem(SELECTED_KEY) || ""; } catch { return ""; }
+  });
+  const [loading, setLoading] = useState(true);
+  const [rates, setRates] = useState<Rates>({ USD: 1 });
 
-  const reload = useCallback(async () => {
-    if (!user) return;
-    const { data } = await supabase.from("operations")
-      .select("id, name, currency, color, kind, fb_ad_account_id").eq("user_id", user.id).order("created_at");
-    const list = (data || []) as DashboardOption[];
+  useEffect(() => { fetchRates().then(setRates); }, []);
+
+  const loadDashboards = useCallback(async () => {
+    if (!user) { setDashboards([]); setLoading(false); return; }
+    setLoading(true);
+    const { data } = await supabase
+      .from("dashboards")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+    const list = (data || []) as Dashboard[];
     setDashboards(list);
-    setActive((cur) => (cur && !list.some((d) => d.id === cur) ? null : cur));
-  }, [user]);
+    if (!selectedId || !list.find((d) => d.id === selectedId)) {
+      const first = list[0]?.id || "";
+      setSelectedId(first);
+      try { localStorage.setItem(SELECTED_KEY, first); } catch {}
+    }
+    setLoading(false);
+  }, [user, selectedId]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { loadDashboards(); }, [loadDashboards]);
 
-  const setActiveId = (id: string | null) => {
-    setActive(id);
-    if (id) localStorage.setItem(KEY, id); else localStorage.removeItem(KEY);
+  const selectDashboard = (id: string) => {
+    setSelectedId(id);
+    try { localStorage.setItem(SELECTED_KEY, id); } catch {}
   };
 
-  const active = dashboards.find((d) => d.id === activeId) || null;
-  return <DashboardCtx.Provider value={{ dashboards, activeId: active?.id ?? null, active, setActiveId, reload }}>{children}</DashboardCtx.Provider>;
-}
+  const current = dashboards.find((d) => d.id === selectedId) || null;
+  const cur = current?.currency || "USD";
 
-export const useDashboard = () => useContext(DashboardCtx);
+  const fmt = useCallback((n: number) => formatCurrency(n, cur), [cur]);
+  const cv = useCallback((amount: number, from: string) => convert(amount, from, cur, rates), [cur, rates]);
 
-/** Restrict a query to the active dashboard (no-op when "Geral"). */
-export function scopeOp<T>(q: T, activeId: string | null): T {
-  return activeId ? (q as any).eq("operation_id", activeId) : q;
+  return (
+    <DashboardContext.Provider value={{
+      dashboards,
+      current,
+      loading,
+      rates,
+      selectDashboard,
+      reloadDashboards: loadDashboards,
+      fmt,
+      cv,
+    }}>
+      {children}
+    </DashboardContext.Provider>
+  );
 }
