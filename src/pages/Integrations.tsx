@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboard } from "@/contexts/DashboardContext";
@@ -612,13 +612,36 @@ export default function Integrations() {
               Para abrir a janela oficial do Facebook no formato Pop-up (como a UTMify faz), insira o <strong>App ID</strong> da sua aplicação Meta for Developers:
             </p>
             <div className="space-y-1.5">
-              <Label className="text-xs">Facebook App ID</Label>
+              <Label className="text-xs font-semibold">Facebook App ID</Label>
               <Input
                 value={appIdInput}
                 onChange={(e) => setAppIdInput(e.target.value)}
                 placeholder="Ex: 123456789012345"
                 className="font-mono text-sm"
               />
+            </div>
+
+            <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-primary">URI de Redirecionamento OAuth:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const uri = `${window.location.origin}/fb-callback.html`;
+                    navigator.clipboard.writeText(uri);
+                    toast({ title: "Copiado!", description: "URI de redirecionamento copiada." });
+                  }}
+                  className="text-[11px] text-muted-foreground hover:text-primary underline flex items-center gap-1"
+                >
+                  <Copy className="h-3 w-3" /> Copiar URI
+                </button>
+              </div>
+              <p className="font-mono text-[11px] text-muted-foreground break-all bg-background/50 p-1.5 rounded border border-border/40">
+                {typeof window !== "undefined" ? `${window.location.origin}/fb-callback.html` : ""}
+              </p>
+              <p className="text-[10px] text-muted-foreground leading-tight">
+                Cole este endereço no campo <strong>"URIs de redirecionamento do OAuth válidos"</strong> dentro das Definições do Início de Sessão do Facebook no Meta Developers.
+              </p>
             </div>
           </div>
           <DialogFooter className="pt-2">
