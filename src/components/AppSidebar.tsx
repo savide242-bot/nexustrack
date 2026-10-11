@@ -1,10 +1,10 @@
-﻿import { Bug,
-  BarChart3, Megaphone, FileText, ShoppingCart, Users,
+import {
+  Bug, BarChart3, Megaphone, FileText, ShoppingCart, Users,
   Radar, Plug, Bell, Settings, LayoutDashboard, Link2
 } from "lucide-react";
-import { Bug, NavLink } from "@/components/NavLink";
-import { Bug, useLocation } from "react-router-dom";
-import { Bug, DashboardSelector } from "@/components/dashboard-v2/DashboardSelector";
+import { NavLink } from "@/components/NavLink";
+import { useLocation } from "react-router-dom";
+import { DashboardSelector } from "@/components/dashboard-v2/DashboardSelector";
 
 const navItems = [
   { title: "Visão Geral", icon: BarChart3, href: "/" },
