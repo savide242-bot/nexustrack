@@ -1,3 +1,4 @@
+import { useDashboard, scopeOp } from "@/contexts/DashboardContext";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,6 +13,7 @@ import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFi
 
 export default function Sales() {
   const { user } = useAuth();
+  const { activeId } = useDashboard();
   const [sales, setSales] = useState<any[]>([]);
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
   const [dateMode, setDateMode] = useState<"sale_date" | "approved_at">("sale_date");
@@ -30,6 +32,8 @@ export default function Sales() {
       let query = (supabase
         .from("sales")
         .select("*, leads_clicks(country, city, utm_source)") as any)
+      query = scopeOp(query, activeId);
+      query = query
         .gte(dateColumn, from)
         .lte(dateColumn, to);
 

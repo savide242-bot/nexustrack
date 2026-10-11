@@ -1,3 +1,4 @@
+import { useDashboard, scopeOp } from "@/contexts/DashboardContext";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -88,6 +89,7 @@ const isRevenueSale = (s: Sale) => ["approved", "realized"].includes(s.status) &
 
 export default function Index() {
   const { user } = useAuth();
+  const { activeId } = useDashboard();
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
   const [sales, setSales] = useState<Sale[]>([]);
   const [prevSales, setPrevSales] = useState<Sale[]>([]);
@@ -114,12 +116,12 @@ export default function Index() {
         { count: ctaCount },
         { data: leads },
       ] = await Promise.all([
-        (supabase.from("sales") as any).select("created_at, sale_date, amount_mzn, status, product_name").gte("sale_date", from.toISOString()).lte("sale_date", to.toISOString()),
-        (supabase.from("sales") as any).select("created_at, sale_date, amount_mzn, status, product_name").gte("sale_date", prevFrom.toISOString()).lt("sale_date", prevTo.toISOString()),
-        supabase.from("leads_clicks").select("*", { count: "exact", head: true }).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
-        supabase.from("leads_clicks").select("*", { count: "exact", head: true }).gte("created_at", prevFrom.toISOString()).lt("created_at", prevTo.toISOString()),
-        supabase.from("cta_clicks").select("*", { count: "exact", head: true }).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
-        supabase.from("leads_clicks").select("utm_source").gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
+        scopeOp((supabase.from("sales") as any).select("created_at, sale_date, amount_mzn, status, product_name"), activeId).gte("sale_date", from.toISOString()).lte("sale_date", to.toISOString()),
+        scopeOp((supabase.from("sales") as any).select("created_at, sale_date, amount_mzn, status, product_name"), activeId).gte("sale_date", prevFrom.toISOString()).lt("sale_date", prevTo.toISOString()),
+        scopeOp(supabase.from("leads_clicks").select("*", { count: "exact", head: true }), activeId).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
+        scopeOp(supabase.from("leads_clicks").select("*", { count: "exact", head: true }), activeId).gte("created_at", prevFrom.toISOString()).lt("created_at", prevTo.toISOString()),
+        scopeOp(supabase.from("cta_clicks").select("*", { count: "exact", head: true }), activeId).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
+        scopeOp(supabase.from("leads_clicks").select("utm_source"), activeId).gte("created_at", from.toISOString()).lte("created_at", to.toISOString()),
       ]);
 
       setSales((curSales as Sale[]) || []);
