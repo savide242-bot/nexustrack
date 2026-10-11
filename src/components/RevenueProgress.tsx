@@ -1,3 +1,4 @@
+import { useDashboard, scopeOp } from "@/contexts/DashboardContext";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,12 +32,14 @@ const createChannelId = () =>
 
 export function RevenueProgress() {
   const { user } = useAuth();
+  const { activeId } = useDashboard();
   const [revenue, setRevenue] = useState(0);
 
   const fetchRevenue = useCallback(async () => {
     const { data } = await supabase
       .from("sales")
       .select("amount_mzn, status, created_at")
+      .match(activeId ? { operation_id: activeId } : {})
       .gte("created_at", CUTOFF);
     if (!data) return;
     const total = data.reduce((sum, s: any) => {
@@ -46,7 +49,7 @@ export function RevenueProgress() {
       return sum + amt;
     }, 0);
     setRevenue(LEGACY_OFFSET + Math.max(0, total));
-  }, []);
+  }, [activeId]);
 
   useEffect(() => {
     if (!user) {

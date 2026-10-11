@@ -1,3 +1,4 @@
+import { useDashboard, scopeOp } from "@/contexts/DashboardContext";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +23,7 @@ type Lead = Tables<"leads_clicks">;
 
 export default function Leads() {
   const { user } = useAuth();
+  const { activeId } = useDashboard();
   const isMobile = useIsMobile();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [convertedIds, setConvertedIds] = useState<Set<string>>(new Set());
@@ -45,7 +47,7 @@ export default function Leads() {
 
     (async () => {
       const [{ data: leadsData }, { data: salesData }, { data: flagsData }] = await Promise.all([
-        supabase.from("leads_clicks").select("*").gte("created_at", from).lte("created_at", to).order("created_at", { ascending: false }).limit(500),
+        scopeOp(supabase.from("leads_clicks").select("*"), activeId).gte("created_at", from).lte("created_at", to).order("created_at", { ascending: false }).limit(500),
         supabase.from("sales").select("lead_id").not("lead_id", "is", null),
         supabase.from("lead_flags").select("lead_id").eq("user_id", user.id).eq("is_hot", true),
       ]);
@@ -54,7 +56,7 @@ export default function Leads() {
       setConvertedIds(new Set((salesData || []).map((s) => s.lead_id as string).filter(Boolean)));
       setHotIds(new Set((flagsData || []).map((f) => f.lead_id as string)));
     })();
-  }, [user, dateRange]);
+  }, [user, dateRange, activeId]);
 
   // Distinct dropdown values
   const countries = useMemo(() => {

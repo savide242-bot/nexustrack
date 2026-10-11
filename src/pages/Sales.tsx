@@ -31,7 +31,7 @@ export default function Sales() {
       const dateColumn = dateMode === "approved_at" ? "approved_at" : "sale_date";
       let query = (supabase
         .from("sales")
-        .select("*, leads_clicks(country, city, utm_source)") as any)
+        .select("*, leads_clicks(country, city, utm_source)") as any);
       query = scopeOp(query, activeId);
       query = query
         .gte(dateColumn, from)
@@ -50,7 +50,7 @@ export default function Sales() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user, dateRange, dateMode]);
+  }, [user, dateRange, dateMode, activeId]);
 
   const statusColor = (s: string) => {
     if (s === "approved") return "bg-primary/20 text-primary";

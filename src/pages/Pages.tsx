@@ -1,3 +1,4 @@
+import { useDashboard, scopeOp } from "@/contexts/DashboardContext";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,6 +35,7 @@ interface PageMetrics {
 
 export default function Pages() {
   const { user } = useAuth();
+  const { activeId } = useDashboard();
   const { toast } = useToast();
   const [pages, setPages] = useState<Page[]>([]);
   const [open, setOpen] = useState(false);
@@ -77,7 +79,7 @@ export default function Pages() {
     const from = dateRange.from.toISOString();
     const to = dateRange.to.toISOString();
 
-    const { data: pagesData } = await supabase.from("pages").select("*").order("created_at", { ascending: false });
+    const { data: pagesData } = await scopeOp(supabase.from("pages").select("*"), activeId).order("created_at", { ascending: false });
     if (!pagesData) { setDataLoading(false); return; }
     setPages(pagesData as Page[]);
 
@@ -142,7 +144,7 @@ export default function Pages() {
     }
     setPageMetrics(metrics);
     setDataLoading(false);
-  }, [dateRange]);
+  }, [dateRange, activeId]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
