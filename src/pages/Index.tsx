@@ -164,7 +164,7 @@ export default function Index() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user, dateRange]);
+  }, [user, dateRange, activeId]);
 
   // Current metrics
   const paidSales = sales.filter(isRevenueSale);
