@@ -229,7 +229,7 @@ export default function Index() {
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Vendas Aprovadas"
           value={metrics.salesCount.toLocaleString()}
@@ -244,7 +244,7 @@ export default function Index() {
         />
         <MetricCard
           title="CPA (Custo por Venda)"
-          value={metrics.cpa > 0 ? fmt(metrics.cpa) : "—"}
+          value={metrics.cpa > 0 ? fmt(metrics.cpa) : "N/A"}
           icon={Target}
           tip="Investimento em anúncios dividido pelo total de vendas aprovadas."
         />
@@ -253,6 +253,33 @@ export default function Index() {
           value={leadsCount.toLocaleString()}
           icon={Users}
           tip="Visitas e leads únicos registrados no tracking desta dashboard."
+        />
+      </div>
+
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          title="ROI"
+          value={metrics.spend > 0 ? `${metrics.roi.toFixed(1)}%` : "N/A"}
+          icon={TrendingUp}
+          tip="Retorno sobre o investimento."
+        />
+        <MetricCard
+          title="Margem de Lucro"
+          value={metrics.netRevenue > 0 ? `${((metrics.profit / metrics.netRevenue) * 100).toFixed(1)}%` : "N/A"}
+          icon={BarChart3}
+          tip="Percentual de lucro sobre a receita líquida."
+        />
+        <MetricCard
+          title="Vendas Reembolsadas"
+          value={fmt(metrics.refundAmount)}
+          icon={ShoppingCart}
+          tip="Total de devoluções e reembolsos."
+        />
+        <MetricCard
+          title="Taxa de Conversão"
+          value={leadsCount > 0 ? `${((metrics.salesCount / leadsCount) * 100).toFixed(2)}%` : "0.0%"}
+          icon={Target}
+          tip="Percentual de leads e visitantes que converteram em vendas."
         />
       </div>
     </div>

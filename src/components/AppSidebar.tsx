@@ -1,7 +1,7 @@
 ﻿import {
   LayoutDashboard, Megaphone, Link2, ShoppingCart, Users, FileText,
   Activity, Plug, Bell, Settings, LogOut, Radar, ChevronDown, Plus,
-  ShieldAlert, Sliders, Wrench, Percent, DollarSign, Crown, HelpCircle
+  Sliders, Bug
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,7 +9,7 @@ import { useDashboard } from "@/contexts/DashboardContext";
 import { Badge } from "@/components/ui/badge";
 
 // Menu 100% alinhado com a UTMify
-const navSections = [
+export const navSections = [
   {
     title: "PRINCIPAL",
     items: [
@@ -25,29 +25,34 @@ const navSections = [
     title: "TRACKING & DADOS",
     items: [
       { label: "Eventos", icon: Activity, href: "/tracking" },
+      { label: "Testar Tracking", icon: Bug, href: "/test-tracking" },
       { label: "Integrações", icon: Plug, href: "/integrations" },
-      { label: "Notificações", icon: Bell, href: "/notifications" },
     ],
   },
   {
     title: "CONFIGURAÇÕES",
     items: [
-      { label: "Avançado (Dashboards)", icon: Settings, href: "/dashboards" },
+      { label: "Dashboards", icon: Settings, href: "/dashboards" },
+      { label: "Notificações", icon: Bell, href: "/notifications" },
       { label: "Configurações da Conta", icon: Sliders, href: "/settings" },
     ],
   },
 ];
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  onItemClick?: () => void;
+}
+
+export function SidebarNavContent({ onItemClick }: AppSidebarProps) {
   const location = useLocation();
   const { signOut, user } = useAuth();
   const { current, dashboards, selectDashboard } = useDashboard();
 
   return (
-    <aside className="w-64 border-r border-border bg-[#0a0a0c]/90 backdrop-blur-2xl flex flex-col h-screen sticky top-0 select-none z-30">
+    <div className="flex flex-col h-full bg-[#0a0a0c] text-foreground">
       {/* 1. Header com Logo NexusTrack */}
       <div className="p-4 flex items-center justify-between border-b border-border/40">
-        <Link to="/" className="flex items-center gap-2.5 group">
+        <Link to="/" onClick={onItemClick} className="flex items-center gap-2.5 group">
           <div className="h-9 w-9 rounded-xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/20 transition-transform group-hover:scale-105">
             <Radar className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -72,8 +77,9 @@ export function AppSidebar() {
           </span>
           <Link
             to="/dashboards"
+            onClick={onItemClick}
             className="text-[11px] text-primary hover:underline flex items-center gap-0.5"
-            title="Gerenciar Dashboards em Avançado"
+            title="Gerenciar Dashboards"
           >
             <Plus className="h-3 w-3" /> Gerir
           </Link>
@@ -82,6 +88,7 @@ export function AppSidebar() {
         {dashboards.length === 0 ? (
           <Link
             to="/dashboards"
+            onClick={onItemClick}
             className="flex items-center justify-between p-2 rounded-lg border border-dashed border-border/60 hover:border-primary/50 text-xs text-muted-foreground hover:text-foreground transition-all group"
           >
             <span>+ Criar dashboard</span>
@@ -91,7 +98,10 @@ export function AppSidebar() {
           <div className="relative">
             <select
               value={current?.id || ""}
-              onChange={(e) => selectDashboard(e.target.value)}
+              onChange={(e) => {
+                selectDashboard(e.target.value);
+                if (onItemClick) onItemClick();
+              }}
               className="w-full appearance-none bg-card border border-border/80 hover:border-border text-foreground text-xs font-medium rounded-lg py-2 pl-3 pr-8 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer transition-all shadow-sm"
             >
               {dashboards.map((d) => (
@@ -105,7 +115,7 @@ export function AppSidebar() {
         )}
       </div>
 
-      {/* 3. Navegação Vertical Estilo UTMify */}
+      {/* 3. Navegação Vertical */}
       <nav className="flex-1 px-2.5 py-3 space-y-4 overflow-y-auto">
         {navSections.map((sec) => (
           <div key={sec.title} className="space-y-1">
@@ -120,6 +130,7 @@ export function AppSidebar() {
                   <Link
                     key={item.href}
                     to={item.href}
+                    onClick={onItemClick}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group relative ${
                       isActive
                         ? "bg-primary/10 text-primary font-semibold shadow-sm"
@@ -154,7 +165,10 @@ export function AppSidebar() {
           </span>
         </div>
         <button
-          onClick={() => signOut()}
+          onClick={() => {
+            if (onItemClick) onItemClick();
+            signOut();
+          }}
           className="text-muted-foreground hover:text-destructive text-xs flex items-center gap-1.5 transition-colors p-1 rounded hover:bg-destructive/10"
           title="Encerrar sessão"
         >
@@ -162,6 +176,14 @@ export function AppSidebar() {
           <span>Sair</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+export function AppSidebar() {
+  return (
+    <aside className="hidden md:flex w-64 border-r border-border bg-[#0a0a0c]/90 backdrop-blur-2xl flex-col h-screen sticky top-0 select-none z-30 shrink-0">
+      <SidebarNavContent />
     </aside>
   );
 }
