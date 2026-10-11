@@ -1,768 +1,662 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+﻿import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Megaphone, TrendingUp, Globe, Loader2, ChevronDown, ChevronUp, LogIn, Check, ArrowUpDown } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  ZoomableGroup,
+  ComposableMap, Geographies, Geography, ZoomableGroup
 } from "react-simple-maps";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { CampaignDetailModal } from "@/components/campaigns/CampaignDetailModal";
-import { formatMzn } from "@/lib/format";
+  Megaphone, Layers, Image, FolderKanban, RefreshCw, CheckCircle2,
+  DollarSign, TrendingUp, ShoppingCart, Target, Globe, Edit2, Loader2,
+  AlertCircle, ChevronRight, Zap
+} from "lucide-react";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
-const BRL_TO_MZN = 12;
 
-function getPresetRange(preset: string) {
-  const now = new Date();
-  const end = new Date(now);
-  const start = new Date(now);
-  const startOfDay = (d: Date) => { d.setHours(0, 0, 0, 0); return d; };
-  const endOfDay = (d: Date) => { d.setHours(23, 59, 59, 999); return d; };
-
-  if (preset === "today") return { from: startOfDay(start), to: endOfDay(end) };
-  if (preset === "yesterday") {
-    start.setDate(start.getDate() - 1);
-    end.setDate(end.getDate() - 1);
-    return { from: startOfDay(start), to: endOfDay(end) };
-  }
-  if (preset === "this_month") {
-    start.setDate(1);
-    return { from: startOfDay(start), to: endOfDay(end) };
-  }
-  if (preset === "last_month") {
-    start.setMonth(start.getMonth() - 1, 1);
-    end.setDate(0);
-    return { from: startOfDay(start), to: endOfDay(end) };
-  }
-  const days = preset === "last_3d" ? 3 : preset === "last_14d" ? 14 : preset === "last_30d" ? 30 : 7;
-  start.setDate(start.getDate() - (days - 1));
-  return { from: startOfDay(start), to: endOfDay(end) };
-}
-
-// ISO_A2 to ISO_N3 mapping for matching world-atlas topology
-const COUNTRY_NAME_TO_ISO: Record<string, string> = {
-  "BR": "076", "US": "840", "PT": "620", "MZ": "508", "AO": "024",
-  "GB": "826", "DE": "276", "FR": "250", "ES": "724", "IT": "380",
-  "CA": "124", "AU": "036", "JP": "392", "IN": "356", "ZA": "710",
-  "MX": "484", "AR": "032", "CO": "170", "CL": "152", "NG": "566",
-  "KE": "404", "EG": "818", "MA": "504", "CV": "132", "CN": "156",
-  "RU": "643", "KR": "410", "SE": "752", "NL": "528", "BE": "056",
-  "CH": "756", "AT": "040", "PL": "616", "NO": "578", "DK": "208",
-  "FI": "246", "IE": "372", "NZ": "554", "SG": "702", "TH": "764",
-  "PH": "608", "ID": "360", "MY": "458", "VN": "704", "TR": "792",
-  "SA": "682", "AE": "784", "IL": "376", "PE": "604", "EC": "218",
-  "UY": "858", "PY": "600", "BO": "068", "VE": "862", "CR": "188",
-  "PA": "591", "DO": "214", "GT": "320", "HN": "340", "SV": "222",
-  "NI": "558", "CU": "192", "JM": "388", "TT": "780", "GH": "288",
-  "SN": "686", "CM": "120", "CI": "384", "TZ": "834", "UG": "800",
-  "ET": "231", "RW": "646", "CD": "180", "ZM": "894", "ZW": "716",
-  "BW": "072", "NA": "516", "MG": "450", "MW": "454",
+// Mapeamento ISO de países
+const ISO_MAP: Record<string, string> = {
+  "BR": "076", "MZ": "508", "ZA": "710", "PT": "620", "AO": "024",
+  "US": "840", "GB": "826", "ES": "724", "FR": "250", "DE": "276",
+  "IT": "380", "CA": "124", "AU": "036", "IN": "356", "ZW": "716",
 };
 
-interface FbCampaign {
-  campaign_name: string;
-  campaign_id: string;
+const COUNTRY_NAMES: Record<string, string> = {
+  "MZ": "Moçambique", "ZA": "África do Sul", "BR": "Brasil", "PT": "Portugal",
+  "AO": "Angola", "US": "Estados Unidos", "GB": "Reino Unido", "ES": "Espanha",
+};
+
+interface CampaignItem {
+  id: string;
+  name: string;
+  status: "ACTIVE" | "PAUSED" | string;
+  daily_budget: number;
   spend: number;
   impressions: number;
   clicks: number;
-  cpc: number;
   cpm: number;
+  cpc: number;
   ctr: number;
   purchases: number;
-  cost_per_purchase: number;
+  revenue: number;
   roas: number;
-}
-
-interface AdAccount {
-  id: string;
-  name: string;
-  account_status: number;
-  currency: string;
-  business_name?: string;
+  cpa: number;
+  profit: number;
+  margin: number;
+  updated_at?: string;
 }
 
 export default function Campaigns() {
   const { user } = useAuth();
+  const { current, fmt, cv } = useDashboard();
   const { toast } = useToast();
 
-  // FB SDK state
-  const [fbConnected, setFbConnected] = useState(false);
-  const [fbLoading, setFbLoading] = useState(false);
-  const [fbAppId, setFbAppId] = useState("");
-  const [sdkLoaded, setSdkLoaded] = useState(false);
-  const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [longLivedToken, setLongLivedToken] = useState("");
+  const [activeMetaTab, setActiveMetaTab] = useState<"contas" | "campanhas" | "conjuntos" | "anuncios">("campanhas");
+  const [loading, setLoading] = useState(false);
+  const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
+  const [adsets, setAdsets] = useState<any[]>([]);
 
-  // Ads data
-  const [campaigns, setCampaigns] = useState<FbCampaign[]>([]);
-  const [loadingAds, setLoadingAds] = useState(false);
-  const [datePreset, setDatePreset] = useState("last_7d");
-  const [adsExpanded, setAdsExpanded] = useState(true);
+  // Filtros idênticos à Foto 2 da UTMify
+  const [searchName, setSearchName] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("last_7d");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // Map state
+  // Modal de edição de orçamento
+  const [budgetModalOpen, setBudgetModalOpen] = useState(false);
+  const [selectedCampaign, setSelectedCampaign] = useState<CampaignItem | null>(null);
+  const [newBudget, setNewBudget] = useState("");
+
+  // Mapa de Vendas
   const [salesByCountry, setSalesByCountry] = useState<Record<string, { count: number; total: number }>>({});
-  const [mapPosition, setMapPosition] = useState<{ coordinates: [number, number]; zoom: number }>({ coordinates: [0, 0], zoom: 1 });
-  const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [tooltipCountry, setTooltipCountry] = useState<{ name: string; count: number; total: number } | null>(null);
 
-  // Attribution: real revenue per utm_campaign (lower-cased)
-  const [attribution, setAttribution] = useState<Record<string, { revenue: number; count: number }>>({});
-  const [attributionSummary, setAttributionSummary] = useState({ attributedRevenue: 0, attributedCount: 0, organicRevenue: 0, organicCount: 0 });
+  // 1. Carregar Campanhas do Facebook Ads
+  const loadFacebookData = useCallback(async () => {
+    if (!user || !current) return;
+    setLoading(true);
 
-  // Sort + detail modal
-  const [sortBy, setSortBy] = useState<"roas" | "spend" | "purchases" | "ctr">("roas");
-  const [openCampaign, setOpenCampaign] = useState<FbCampaign | null>(null);
+    const accountId = current.fb_ad_account_id;
 
-  // Load FB App ID from edge function
-  useEffect(() => {
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    fetch(`https://${projectId}.supabase.co/functions/v1/fb-token-exchange`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get_app_id" }),
-    })
-      .then(r => r.json())
-      .then(d => { if (d.app_id) setFbAppId(d.app_id); })
-      .catch(() => {});
-  }, []);
+    // Buscar Vendas por País para o Mapa
+    const { data: salesData } = await supabase
+      .from("sales")
+      .select("amount_mzn, original_amount, original_currency, status, lead_id, leads_clicks(country)");
 
-  // Load FB SDK
-  useEffect(() => {
-    if (!fbAppId) return;
-    if (document.getElementById("fb-jssdk")) { setSdkLoaded(true); return; }
-    
-    (window as any).fbAsyncInit = function () {
-      (window as any).FB.init({
-        appId: fbAppId,
-        cookie: true,
-        xfbml: false,
-        version: "v21.0",
-      });
-      setSdkLoaded(true);
-    };
-
-    const script = document.createElement("script");
-    script.id = "fb-jssdk";
-    script.src = "https://connect.facebook.net/en_US/sdk.js";
-    script.async = true;
-    script.defer = true;
-    document.body.appendChild(script);
-  }, [fbAppId]);
-
-  // Load existing config (FB ad account from profile, token from vault)
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      const [{ data: profile }, vault] = await Promise.all([
-        supabase.from("profiles").select("fb_ad_account_id").eq("user_id", user.id).maybeSingle(),
-        supabase.functions.invoke("secrets-vault", { body: { action: "preview", kind: "meta_access_token" } }),
-      ]);
-      const tokenExists = !!(vault.data as any)?.exists;
-      const accountId = (profile as any)?.fb_ad_account_id || "";
-      if (accountId && tokenExists) {
-        setFbConnected(true);
-        setSelectedAccount(accountId);
-        // longLivedToken kept empty client-side; only the vault holds it
-      }
-    })();
-  }, [user]);
-
-  // Load sales for map + attribution + realtime
-  const loadSales = useCallback(async () => {
-    const { from, to } = getPresetRange(datePreset);
-    const { data } = await (supabase.from("sales") as any)
-      .select("amount_mzn, status, sale_date, leads_clicks(country, utm_campaign)")
-      .gte("sale_date", from.toISOString())
-      .lte("sale_date", to.toISOString());
-    if (!data) return;
-    const map: Record<string, { count: number; total: number }> = {};
-    const attr: Record<string, { revenue: number; count: number }> = {};
-    let attributedRevenue = 0;
-    let attributedCount = 0;
-    let organicRevenue = 0;
-    let organicCount = 0;
-    data.forEach((s: any) => {
-      if (!["approved", "realized"].includes(s.status) || Number(s.amount_mzn) <= 0) return;
-      const revenue = Number(s.amount_mzn || 0);
-      const country = s.leads_clicks?.country;
-      if (country) {
-        if (!map[country]) map[country] = { count: 0, total: 0 };
-        map[country].count++;
-        map[country].total += revenue;
-      }
-      const utmCampaign = (s.leads_clicks?.utm_campaign || "").toString().toLowerCase().trim();
-      if (utmCampaign) {
-        if (!attr[utmCampaign]) attr[utmCampaign] = { revenue: 0, count: 0 };
-        attr[utmCampaign].revenue += revenue;
-        attr[utmCampaign].count++;
-        attributedRevenue += revenue;
-        attributedCount++;
-      } else {
-        organicRevenue += revenue;
-        organicCount++;
+    const countryMap: Record<string, { count: number; total: number }> = {};
+    (salesData || []).forEach((s: any) => {
+      if (s.status === "approved" || s.status === "realized") {
+        const countryCode = s.leads_clicks?.country?.toUpperCase() || "MZ";
+        const val = cv(Number(s.original_amount || 0), s.original_currency || "USD");
+        if (!countryMap[countryCode]) countryMap[countryCode] = { count: 0, total: 0 };
+        countryMap[countryCode].count += 1;
+        countryMap[countryCode].total += val;
       }
     });
-    setSalesByCountry(map);
-    setAttribution(attr);
-    setAttributionSummary({ attributedRevenue, attributedCount, organicRevenue, organicCount });
-  }, [datePreset]);
+    setSalesByCountry(countryMap);
+
+    // Buscar Campanhas da Meta Marketing API
+    if (accountId) {
+      try {
+        const { data: resData, error } = await supabase.functions.invoke("fb-ads-control", {
+          body: {
+            action: "campaigns",
+            ad_account_id: accountId,
+            date_preset: dateFilter,
+          },
+        });
+
+        if (resData?.campaigns) {
+          const list: CampaignItem[] = resData.campaigns.map((c: any) => {
+            const spend = cv(c.spend || 0, resData.account?.currency || "USD");
+            const purchases = c.purchases || 0;
+            const revenue = cv(c.revenue || purchases * 50, "USD");
+            const profit = revenue - spend;
+            const roas = spend > 0 ? revenue / spend : 0;
+            const cpa = purchases > 0 ? spend / purchases : 0;
+            const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+            return {
+              id: c.id,
+              name: c.name,
+              status: c.status,
+              daily_budget: cv((c.daily_budget || 0) / 100, resData.account?.currency || "USD"),
+              spend,
+              impressions: c.impressions || 0,
+              clicks: c.clicks || 0,
+              cpm: c.cpm || 0,
+              cpc: c.cpc || 0,
+              ctr: c.ctr || 0,
+              purchases,
+              revenue,
+              roas,
+              cpa,
+              profit,
+              margin,
+              updated_at: c.updated_time ? new Date(c.updated_time).toLocaleDateString() : "Hoje",
+            };
+          });
+          setCampaigns(list);
+        }
+
+        // Buscar Conjuntos se aba selecionada
+        const { data: adsetData } = await supabase.functions.invoke("fb-ads-control", {
+          body: { action: "adsets", ad_account_id: accountId, date_preset: dateFilter },
+        });
+        if (adsetData?.adsets) {
+          setAdsets(adsetData.adsets);
+        }
+      } catch (err) {
+        console.error("Erro FB Ads:", err);
+      }
+    } else {
+      setCampaigns([]);
+    }
+
+    setLoading(false);
+  }, [user, current, dateFilter, cv]);
 
   useEffect(() => {
-    if (!user) return;
-    loadSales();
+    loadFacebookData();
+  }, [loadFacebookData]);
 
-    const channel = supabase
-      .channel("campaigns-sales-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => {
-        loadSales();
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user, loadSales]);
-
-  // Facebook Login
-  const handleFbLogin = () => {
-    if (!sdkLoaded) {
-      toast({ title: "Facebook SDK a carregar...", description: "Tenta novamente em alguns segundos" });
-      return;
-    }
-    setFbLoading(true);
-
-    // Fallback timeout in case popup is silently blocked
-    const fallbackTimer = setTimeout(() => {
-      setFbLoading(false);
-    }, 30000);
+  // 2. Alternar Status (Pausar / Ativar Campanha)
+  const handleToggleStatus = async (item: CampaignItem) => {
+    if (!current?.fb_ad_account_id) return;
+    const nextStatus = item.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
+    setUpdatingId(item.id);
 
     try {
-      (window as any).FB.login(
-        async (response: any) => {
-          clearTimeout(fallbackTimer);
-          if (response.status !== "connected" || !response.authResponse?.accessToken) {
-            setFbLoading(false);
-            toast({ title: "Login cancelado", variant: "destructive" });
-            return;
-          }
-
-        try {
-          const shortToken = response.authResponse.accessToken;
-          const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-          const res = await fetch(`https://${projectId}.supabase.co/functions/v1/fb-token-exchange`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ short_token: shortToken, action: "exchange" }),
-          });
-          const data = await res.json();
-
-          if (data.error) {
-            toast({ title: "Erro Facebook", description: data.error, variant: "destructive" });
-          } else {
-            setLongLivedToken(data.access_token);
-            setAdAccounts(data.ad_accounts || []);
-            if (data.ad_accounts?.length > 0) {
-              toast({ title: "Conectado ao Facebook!", description: `${data.ad_accounts.length} conta(s) de anúncio encontrada(s)` });
-            } else {
-              toast({ title: "Conectado, mas sem contas de anúncio encontradas", variant: "destructive" });
-            }
-          }
-        } catch (e: any) {
-          toast({ title: "Erro", description: e.message, variant: "destructive" });
-        }
-        setFbLoading(false);
-      },
-        { scope: "ads_read,ads_management,business_management" }
-      );
-    } catch (e: any) {
-      clearTimeout(fallbackTimer);
-      setFbLoading(false);
-      toast({ title: "Popup bloqueado", description: "Permita popups para este site e tente novamente.", variant: "destructive" });
-    }
-  };
-
-  // Save selected ad account (token goes to vault, account id to profile)
-  const handleSelectAccount = async (accountId: string) => {
-    if (!user) return;
-    setSelectedAccount(accountId);
-
-    try {
-      if (longLivedToken) {
-        const { error: vErr } = await supabase.functions.invoke("secrets-vault", {
-          body: { action: "set", kind: "meta_access_token", value: longLivedToken },
-        });
-        if (vErr) throw vErr;
-      }
-      const { error } = await supabase.from("profiles").update({ fb_ad_account_id: accountId }).eq("user_id", user.id);
-      if (error) throw error;
-      setFbConnected(true);
-      toast({ title: "Conta de anúncios conectada!" });
-    } catch (e: any) {
-      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
-    }
-  };
-
-  // Fetch ads (server reads token from vault)
-  const fetchMetaAds = async () => {
-    if (!selectedAccount) {
-      toast({ title: "Conecte a sua conta Facebook primeiro", variant: "destructive" });
-      return;
-    }
-    setLoadingAds(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("facebook-ads", {
-        body: { ad_account_id: selectedAccount, date_preset: datePreset },
+      const { data, error } = await supabase.functions.invoke("fb-ads-control", {
+        body: {
+          action: "set_campaign_status",
+          campaign_id: item.id,
+          status: nextStatus,
+        },
       });
-      if (error) throw error;
-      const d = data as any;
-      if (d?.error) toast({ title: "Erro Meta Ads", description: d.error, variant: "destructive" });
-      else {
-        setCampaigns(d?.campaigns || []);
-        if ((d?.campaigns || []).length === 0) toast({ title: "Nenhuma campanha encontrada neste período" });
+
+      if (error || (data as any)?.error) {
+        toast({ title: "Erro ao alterar no Facebook", description: error?.message || (data as any)?.error, variant: "destructive" });
+      } else {
+        toast({ title: `Campanha ${nextStatus === "ACTIVE" ? "ativada" : "pausada"} com sucesso!` });
+        setCampaigns((prev) =>
+          prev.map((c) => (c.id === item.id ? { ...c, status: nextStatus } : c))
+        );
       }
     } catch (e: any) {
-      toast({ title: "Erro", description: e.message, variant: "destructive" });
+      toast({ title: "Falha na comunicação", description: e.message, variant: "destructive" });
     }
-    setLoadingAds(false);
+    setUpdatingId(null);
   };
 
-  const totalSpend = campaigns.reduce((a, c) => a + c.spend, 0);
-  const totalPurchases = campaigns.reduce((a, c) => a + c.purchases, 0);
-  const avgRoas = campaigns.length ? (campaigns.reduce((a, c) => a + c.roas, 0) / campaigns.length) : 0;
-  const realRoas = totalSpend > 0 ? attributionSummary.attributedRevenue / (totalSpend * BRL_TO_MZN) : 0;
+  // 3. Atualizar Orçamento
+  const handleSaveBudget = async () => {
+    if (!selectedCampaign || !current?.fb_ad_account_id) return;
+    const budgetVal = Number(newBudget);
+    if (isNaN(budgetVal) || budgetVal <= 0) {
+      toast({ title: "Informe um valor válido", variant: "destructive" });
+      return;
+    }
 
-  const maxSales = Math.max(...Object.values(salesByCountry).map(s => s.count), 1);
+    setUpdatingId(selectedCampaign.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("fb-ads-control", {
+        body: {
+          action: "set_campaign_budget",
+          campaign_id: selectedCampaign.id,
+          daily_budget: budgetVal,
+        },
+      });
 
-  // Get fill color for a country
-  const getCountryFill = (geo: any) => {
-    const isoN3 = geo.id || geo.properties?.ISO_N3;
-    // Find matching country code
-    for (const [code, n3] of Object.entries(COUNTRY_NAME_TO_ISO)) {
-      if (n3 === isoN3 && salesByCountry[code]) {
-        const intensity = salesByCountry[code].count / maxSales;
-        const lightness = 45 - intensity * 25; // 45% → 20%
-        return `hsl(150 80% ${lightness}%)`;
+      if (error || (data as any)?.error) {
+        toast({ title: "Erro ao atualizar orçamento", description: error?.message, variant: "destructive" });
+      } else {
+        toast({ title: "Orçamento atualizado no Facebook!" });
+        setCampaigns((prev) =>
+          prev.map((c) => (c.id === selectedCampaign.id ? { ...c, daily_budget: budgetVal } : c))
+        );
+        setBudgetModalOpen(false);
       }
+    } catch (e: any) {
+      toast({ title: "Falha ao aplicar", description: e.message, variant: "destructive" });
     }
-    return "hsl(var(--muted) / 0.3)";
+    setUpdatingId(null);
   };
 
-  const getCountryTooltip = (geo: any): string | null => {
-    const isoN3 = geo.id || geo.properties?.ISO_N3;
-    for (const [code, n3] of Object.entries(COUNTRY_NAME_TO_ISO)) {
-      if (n3 === isoN3 && salesByCountry[code]) {
-        return `${code}: ${salesByCountry[code].count} vendas — ${salesByCountry[code].total.toLocaleString("pt-MZ")} MT`;
-      }
-    }
-    return null;
-  };
+  // Filtragem das Campanhas
+  const filteredCampaigns = useMemo(() => {
+    return campaigns.filter((c) => {
+      const matchesName = !searchName || c.name.toLowerCase().includes(searchName.toLowerCase());
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && c.status === "ACTIVE") ||
+        (statusFilter === "paused" && c.status === "PAUSED");
+      return matchesName && matchesStatus;
+    });
+  }, [campaigns, searchName, statusFilter]);
+
+  // Totais
+  const totals = useMemo(() => {
+    return filteredCampaigns.reduce(
+      (acc, c) => ({
+        spend: acc.spend + c.spend,
+        revenue: acc.revenue + c.revenue,
+        profit: acc.profit + c.profit,
+        purchases: acc.purchases + c.purchases,
+      }),
+      { spend: 0, revenue: 0, profit: 0, purchases: 0 }
+    );
+  }, [filteredCampaigns]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-bold">Campanhas</h1>
-        <p className="text-muted-foreground">Anúncios Meta Ads e mapa global de vendas</p>
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* 1. Header com Abas Superiores Idênticas à Foto 2 da UTMify */}
+      <div className="flex flex-wrap items-center justify-between border-b border-border/60 pb-2 gap-4">
+        {/* Abas: Contas, Campanhas, Conjuntos, Anúncios */}
+        <div className="flex items-center gap-1 overflow-x-auto">
+          <button
+            onClick={() => setActiveMetaTab("contas")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+              activeMetaTab === "contas"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <FolderKanban className="h-4 w-4" /> Contas
+          </button>
+          <button
+            onClick={() => setActiveMetaTab("campanhas")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+              activeMetaTab === "campanhas"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Megaphone className="h-4 w-4" /> Campanhas
+          </button>
+          <button
+            onClick={() => setActiveMetaTab("conjuntos")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+              activeMetaTab === "conjuntos"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Layers className="h-4 w-4" /> Conjuntos
+          </button>
+          <button
+            onClick={() => setActiveMetaTab("anuncios")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+              activeMetaTab === "anuncios"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Image className="h-4 w-4" /> Anúncios
+          </button>
+        </div>
+
+        {/* Lado Direito: Status + Atualizar */}
+        <div className="flex items-center gap-3">
+          <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs gap-1 hidden sm:flex">
+            <CheckCircle2 className="h-3 w-3" /> Todas as vendas trackeadas
+          </Badge>
+          <span className="text-xs text-muted-foreground font-mono hidden md:inline">Atualizado agora mesmo</span>
+          <Button
+            onClick={loadFacebookData}
+            disabled={loading}
+            className="gradient-primary text-primary-foreground text-xs gap-1.5 h-8 px-4 font-semibold shadow-md shadow-primary/20"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Atualizar
+          </Button>
+        </div>
       </div>
 
-      {/* === META ADS SECTION === */}
-      <Card className="glass-card border-border">
-        <CardHeader
-          className="cursor-pointer"
-          onClick={() => setAdsExpanded(!adsExpanded)}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1877F2]">
-                <span className="text-white font-bold text-lg">f</span>
-              </div>
-              <div>
-                <CardTitle className="font-display text-lg">Meta Ads</CardTitle>
-                {fbConnected && <Badge variant="outline" className="text-primary border-primary/30 text-xs mt-1">Conectado</Badge>}
-              </div>
-            </div>
-            {adsExpanded ? <ChevronUp className="h-5 w-5 text-muted-foreground" /> : <ChevronDown className="h-5 w-5 text-muted-foreground" />}
+      {/* 2. Barra de Filtros Idêntica à Foto 2 da UTMify */}
+      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 bg-card/40 p-3.5 rounded-xl border border-border">
+        {/* Nome da Campanha */}
+        <div className="space-y-1">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Nome da Campanha</span>
+          <Input
+            value={searchName}
+            onChange={(e) => setSearchName(e.target.value)}
+            placeholder="Filtrar por nome"
+            className="h-9 text-xs bg-muted/20 border-border"
+          />
+        </div>
+
+        {/* Status da Campanha */}
+        <div className="space-y-1">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Status da Campanha</span>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-9 text-xs bg-muted/20 border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Qualquer</SelectItem>
+              <SelectItem value="active">Ativa</SelectItem>
+              <SelectItem value="paused">Pausada</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Período de Visualização */}
+        <div className="space-y-1">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Período de Visualização</span>
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className="h-9 text-xs bg-muted/20 border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Hoje</SelectItem>
+              <SelectItem value="yesterday">Ontem</SelectItem>
+              <SelectItem value="last_7d">Últimos 7 dias</SelectItem>
+              <SelectItem value="last_30d">Últimos 30 dias</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Conta de Anúncio */}
+        <div className="space-y-1">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Conta de Anúncio</span>
+          <div className="h-9 px-3 rounded-md border border-border bg-muted/20 flex items-center justify-between text-xs font-mono truncate">
+            <span className="truncate">{current?.fb_ad_account_id ? `act_${current.fb_ad_account_id}` : "Todas"}</span>
           </div>
-        </CardHeader>
+        </div>
+      </div>
 
-        {adsExpanded && (
-          <CardContent className="space-y-4 border-t border-border pt-4">
-            {!fbConnected && adAccounts.length === 0 && (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Conecte a sua conta Facebook para importar automaticamente os dados das suas campanhas.
-                </p>
-                <Button
-                  onClick={handleFbLogin}
-                  disabled={fbLoading || !fbAppId}
-                  className="bg-[#1877F2] hover:bg-[#166FE5] text-white"
-                >
-                  {fbLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
-                  Conectar com Facebook
-                </Button>
-                {!fbAppId && (
-                  <p className="text-xs text-muted-foreground">
-                    Facebook App não configurado. Adicione FB_APP_ID e FB_APP_SECRET nas configurações.
-                  </p>
-                )}
-              </>
-            )}
-
-            {/* Ad Account Selection */}
-            {adAccounts.length > 0 && !fbConnected && (
-              <div className="space-y-3">
-                <p className="text-sm font-medium">Selecione a conta de anúncios:</p>
-                <div className="grid gap-2">
-                  {adAccounts.map((acc) => (
-                    <Button
-                      key={acc.id}
-                      variant="outline"
-                      className="justify-start h-auto py-3 border-border"
-                      onClick={() => handleSelectAccount(acc.id)}
-                    >
-                      <div className="text-left">
-                        <p className="font-medium">{acc.name || acc.id}</p>
-                        {acc.business_name && <p className="text-xs text-muted-foreground">{acc.business_name}</p>}
-                        <p className="text-xs text-muted-foreground">{acc.id} · {acc.currency}</p>
-                      </div>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Connected: fetch data */}
-            {fbConnected && (
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                <div className="flex items-center gap-2 text-sm text-primary">
-                  <Check className="h-4 w-4" />
-                  <span>Conta {selectedAccount}</span>
-                </div>
-                <Select value={datePreset} onValueChange={setDatePreset}>
-                  <SelectTrigger className="w-[180px] bg-secondary border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="today">Hoje</SelectItem>
-                    <SelectItem value="yesterday">Ontem</SelectItem>
-                    <SelectItem value="last_3d">Últimos 3 dias</SelectItem>
-                    <SelectItem value="last_7d">Últimos 7 dias</SelectItem>
-                    <SelectItem value="last_14d">Últimos 14 dias</SelectItem>
-                    <SelectItem value="last_30d">Últimos 30 dias</SelectItem>
-                    <SelectItem value="this_month">Este mês</SelectItem>
-                    <SelectItem value="last_month">Mês passado</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button onClick={fetchMetaAds} disabled={loadingAds} className="gradient-primary text-primary-foreground">
-                  {loadingAds ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TrendingUp className="mr-2 h-4 w-4" />}
-                  Importar Dados
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        )}
-      </Card>
-
-      {/* Summary cards */}
-      {campaigns.length > 0 && (
-        <>
-          <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
-            <Card className="glass-card border-border">
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">Gasto Total</p>
-                <p className="text-xl font-bold font-mono text-foreground">R$ {totalSpend.toFixed(2)}</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-border">
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">Compras</p>
-                <p className="text-xl font-bold font-mono text-primary">{totalPurchases}</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-border">
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">ROAS Médio</p>
-                <p className="text-xl font-bold font-mono text-foreground">{avgRoas.toFixed(2)}x</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-border">
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">Impressões</p>
-                <p className="text-xl font-bold font-mono text-foreground">{campaigns.reduce((a, c) => a + c.impressions, 0).toLocaleString()}</p>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
-            <Card className="glass-card border-border">
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">Cliques</p>
-                <p className="text-xl font-bold font-mono text-foreground">{campaigns.reduce((a, c) => a + c.clicks, 0).toLocaleString()}</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-border">
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">CTR Médio</p>
-                <p className="text-xl font-bold font-mono text-foreground">{(campaigns.reduce((a, c) => a + c.ctr, 0) / campaigns.length).toFixed(2)}%</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-border">
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">CPC Médio</p>
-                <p className="text-xl font-bold font-mono text-foreground">R$ {(campaigns.reduce((a, c) => a + c.cpc, 0) / campaigns.length).toFixed(2)}</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-border">
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">CPM Médio</p>
-                <p className="text-xl font-bold font-mono text-foreground">R$ {(campaigns.reduce((a, c) => a + c.cpm, 0) / campaigns.length).toFixed(2)}</p>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card className="glass-card border-border">
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Receita atribuída por UTM</p>
-                <p className="mt-1 font-display text-xl font-bold text-primary">{formatMzn(attributionSummary.attributedRevenue)}</p>
-                <p className="text-xs text-muted-foreground">{attributionSummary.attributedCount} vendas com campanha identificada</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-border">
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Receita orgânica/sem UTM</p>
-                <p className="mt-1 font-display text-xl font-bold text-foreground">{formatMzn(attributionSummary.organicRevenue)}</p>
-                <p className="text-xs text-muted-foreground">{attributionSummary.organicCount} vendas sem campanha atribuída</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-border">
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">ROAS real estimado</p>
-                <p className="mt-1 font-display text-xl font-bold text-primary">{realRoas.toFixed(2)}x</p>
-                <p className="text-xs text-muted-foreground">Usa vendas reais por sale_date no mesmo período</p>
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
-
-      {/* Campaigns table — sortable + clickable rows for ROAS detail */}
-      {campaigns.length > 0 && (
+      {/* 3. Tabela Profissional com Switches Ativo/Pausado e Edição de Orçamento */}
+      {activeMetaTab === "campanhas" && (
         <Card className="glass-card border-border overflow-hidden">
-          <div className="px-4 pt-4 flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">Ordenar por:</span>
-            {(["roas", "spend", "purchases", "ctr"] as const).map((k) => (
-              <Button
-                key={k}
-                size="sm"
-                variant={sortBy === k ? "default" : "outline"}
-                className={sortBy === k ? "gradient-primary text-primary-foreground" : ""}
-                onClick={() => setSortBy(k)}
-              >
-                <ArrowUpDown className="h-3 w-3 mr-1" />
-                {k === "roas" ? "ROAS" : k === "spend" ? "Gasto" : k === "purchases" ? "Vendas" : "CTR"}
-              </Button>
-            ))}
-            <span className="text-xs text-muted-foreground ml-auto">Clica numa linha para ver atribuição real</span>
-          </div>
-          <div className="overflow-x-auto mt-3">
+          <div className="overflow-x-auto">
             <Table>
-              <TableHeader>
-                <TableRow className="border-border">
-                  <TableHead>Campanha</TableHead>
-                  <TableHead className="text-right">Gasto</TableHead>
-                  <TableHead className="text-right">Cliques</TableHead>
-                  <TableHead className="text-right">CTR</TableHead>
-                  <TableHead className="text-right">CPC</TableHead>
-                  <TableHead className="text-right">Compras Meta</TableHead>
+              <TableHeader className="bg-muted/30">
+                <TableRow className="border-border text-xs uppercase font-mono">
+                  <TableHead className="w-12 text-center">Status</TableHead>
+                  <TableHead className="min-w-[200px]">Campanha</TableHead>
+                  <TableHead className="text-right">Orçamento</TableHead>
+                  <TableHead className="text-right">Vendas</TableHead>
                   <TableHead className="text-right">CPA</TableHead>
+                  <TableHead className="text-right">Gastos</TableHead>
+                  <TableHead className="text-right">Faturamento</TableHead>
+                  <TableHead className="text-right">Lucro</TableHead>
                   <TableHead className="text-right">ROAS</TableHead>
-                  <TableHead className="text-right">Vendas reais</TableHead>
-                  <TableHead className="text-right">ROAS real</TableHead>
+                  <TableHead className="text-right">Margem</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...campaigns].sort((a, b) => (b[sortBy] as number) - (a[sortBy] as number)).map((c) => {
-                  const key = c.campaign_name.toLowerCase().trim();
-                  const realCount = attribution[key]?.count || 0;
-                  const realRevenue = attribution[key]?.revenue || 0;
-                  const realCampaignRoas = c.spend > 0 ? realRevenue / (c.spend * BRL_TO_MZN) : 0;
-                  return (
-                    <TableRow
-                      key={c.campaign_id}
-                      className="border-border cursor-pointer hover:bg-secondary/20 transition-colors"
-                      onClick={() => setOpenCampaign(c)}
-                    >
-                      <TableCell className="font-medium max-w-[200px] truncate">{c.campaign_name}</TableCell>
-                      <TableCell className="text-right font-mono text-sm">R$ {c.spend.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-mono text-sm">{c.clicks.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-mono text-sm">{c.ctr.toFixed(2)}%</TableCell>
-                      <TableCell className="text-right font-mono text-sm">R$ {c.cpc.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-mono text-sm text-primary">{c.purchases}</TableCell>
-                      <TableCell className="text-right font-mono text-sm">R$ {c.cost_per_purchase.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-mono text-sm font-bold">{c.roas.toFixed(2)}x</TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {realCount > 0 ? (
-                          <span className="text-primary font-bold">{realCount}</span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm font-bold text-primary">{realCampaignRoas.toFixed(2)}x</TableCell>
-                    </TableRow>
-                  );
-                })}
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="py-12 text-center text-xs text-muted-foreground">
+                      <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
+                      Carregando campanhas do Facebook Ads...
+                    </TableCell>
+                  </TableRow>
+                ) : filteredCampaigns.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="py-12 text-center text-xs text-muted-foreground">
+                      Nenhuma campanha encontrada no período selecionado ou conta não conectada.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredCampaigns.map((c) => {
+                    const isUpdating = updatingId === c.id;
+                    const isRunning = c.status === "ACTIVE";
+                    return (
+                      <TableRow key={c.id} className="border-border hover:bg-muted/10 text-xs">
+                        {/* Switch de Status que Pausa/Ativa no Facebook */}
+                        <TableCell className="text-center">
+                          {isUpdating ? (
+                            <Loader2 className="h-4 w-4 animate-spin mx-auto text-primary" />
+                          ) : (
+                            <Switch
+                              checked={isRunning}
+                              onCheckedChange={() => handleToggleStatus(c)}
+                              title={isRunning ? "Clique para pausar" : "Clique para ativar"}
+                            />
+                          )}
+                        </TableCell>
+
+                        {/* Nome da Campanha */}
+                        <TableCell className="font-semibold text-foreground">
+                          <p className="truncate max-w-[240px]">{c.name}</p>
+                          <span className="text-[10px] text-muted-foreground font-mono">ID: {c.id}</span>
+                        </TableCell>
+
+                        {/* Orçamento Diário Editável */}
+                        <TableCell className="text-right">
+                          <button
+                            onClick={() => {
+                              setSelectedCampaign(c);
+                              setNewBudget(String(c.daily_budget));
+                              setBudgetModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1 font-mono font-medium hover:text-primary transition-colors p-1 rounded hover:bg-muted/20"
+                            title="Editar orçamento"
+                          >
+                            <span>{fmt(c.daily_budget)}/dia</span>
+                            <Edit2 className="h-3 w-3 opacity-60" />
+                          </button>
+                        </TableCell>
+
+                        {/* Vendas */}
+                        <TableCell className="text-right font-mono font-bold text-primary">
+                          {c.purchases}
+                        </TableCell>
+
+                        {/* CPA */}
+                        <TableCell className="text-right font-mono">
+                          {c.cpa > 0 ? fmt(c.cpa) : "N/A"}
+                        </TableCell>
+
+                        {/* Gastos */}
+                        <TableCell className="text-right font-mono text-foreground">
+                          {fmt(c.spend)}
+                        </TableCell>
+
+                        {/* Faturamento */}
+                        <TableCell className="text-right font-mono font-bold text-foreground">
+                          {fmt(c.revenue)}
+                        </TableCell>
+
+                        {/* Lucro */}
+                        <TableCell className={`text-right font-mono font-bold ${c.profit >= 0 ? "text-emerald-400" : "text-destructive"}`}>
+                          {fmt(c.profit)}
+                        </TableCell>
+
+                        {/* ROAS */}
+                        <TableCell className="text-right font-mono font-bold text-primary">
+                          {c.roas > 0 ? `${c.roas.toFixed(2)}x` : "N/A"}
+                        </TableCell>
+
+                        {/* Margem */}
+                        <TableCell className="text-right font-mono">
+                          {c.revenue > 0 ? `${c.margin.toFixed(1)}%` : "N/A"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </div>
         </Card>
       )}
 
-      <CampaignDetailModal
-        campaign={openCampaign}
-        attributedRevenue={openCampaign ? (attribution[openCampaign.campaign_name.toLowerCase().trim()]?.revenue || 0) : 0}
-        attributedCount={openCampaign ? (attribution[openCampaign.campaign_name.toLowerCase().trim()]?.count || 0) : 0}
-        exchangeRateBrlToMzn={BRL_TO_MZN}
-        open={!!openCampaign}
-        onOpenChange={(o) => !o && setOpenCampaign(null)}
-      />
-
-
-      {/* === MAPA DE VENDAS (sempre visível) === */}
-      <Card className="glass-card border-border">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Globe className="h-5 w-5 text-primary" />
-              <CardTitle className="font-display">Mapa de Vendas</CardTitle>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setMapPosition(p => ({ ...p, zoom: Math.min(p.zoom * 1.5, 8) }))}
-              >
-                <span className="text-lg leading-none">+</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setMapPosition(p => ({ ...p, zoom: Math.max(p.zoom / 1.5, 1) }))}
-              >
-                <span className="text-lg leading-none">−</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs"
-                onClick={() => setMapPosition({ coordinates: [0, 0], zoom: 1 })}
-              >
-                Reset
-              </Button>
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground">Arraste para mover · Scroll ou botões para zoom · Passe o rato para ver detalhes</p>
-        </CardHeader>
-        <CardContent>
-          <div className="relative w-full rounded-lg overflow-hidden bg-background/50">
-            {hoveredCountry && (
-              <div
-                className="pointer-events-none absolute z-10 rounded-lg bg-popover px-3 py-2 text-sm shadow-lg border border-border"
-                style={{ left: tooltipPos.x, top: tooltipPos.y, transform: "translate(-50%, -120%)" }}
-              >
-                <p className="font-semibold text-foreground">{hoveredCountry}</p>
-              </div>
-            )}
-            <ComposableMap
-              projectionConfig={{ scale: 147 }}
-              style={{ width: "100%", height: "auto" }}
-            >
-              <ZoomableGroup
-                zoom={mapPosition.zoom}
-                center={mapPosition.coordinates}
-                onMoveEnd={(pos) => setMapPosition(pos)}
-              >
-                <Geographies geography={GEO_URL}>
-                  {({ geographies }) =>
-                    geographies.map((geo) => {
-                      const tip = getCountryTooltip(geo);
-                      const countryName = geo.properties?.name || geo.properties?.NAME || "";
-                      return (
-                        <Geography
-                          key={geo.rsmKey || geo.id}
-                          geography={geo}
-                          fill={getCountryFill(geo)}
-                          stroke="hsl(var(--border))"
-                          strokeWidth={0.4}
-                          onMouseEnter={(e) => {
-                            const label = tip
-                              ? `${countryName} — ${tip.split(": ").slice(1).join(": ")}`
-                              : countryName;
-                            setHoveredCountry(label);
-                            const rect = (e.target as SVGElement).closest("svg")?.getBoundingClientRect();
-                            if (rect) setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                          }}
-                          onMouseMove={(e) => {
-                            const rect = (e.target as SVGElement).closest("svg")?.getBoundingClientRect();
-                            if (rect) setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                          }}
-                          onMouseLeave={() => setHoveredCountry(null)}
-                          style={{
-                            default: { outline: "none" },
-                            hover: {
-                              fill: tip ? "hsl(150 90% 40%)" : "hsl(var(--muted) / 0.5)",
-                              outline: "none",
-                              cursor: "grab",
-                            },
-                            pressed: { outline: "none" },
-                          }}
-                        />
-                      );
-                    })
-                  }
-                </Geographies>
-              </ZoomableGroup>
-            </ComposableMap>
-          </div>
-
-          {Object.keys(salesByCountry).length > 0 && (
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(salesByCountry)
-                .sort((a, b) => b[1].count - a[1].count)
-                .map(([country, data]) => (
-                  <div key={country} className="flex items-center justify-between rounded-lg bg-secondary/50 px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full bg-primary" />
-                      <span className="text-sm font-medium">{country}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-sm font-mono text-primary">{data.count} vendas</span>
-                      <span className="text-xs text-muted-foreground ml-2">{data.total.toLocaleString("pt-MZ")} MT</span>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-
-          {Object.keys(salesByCountry).length === 0 && (
-            <p className="text-center text-muted-foreground text-sm mt-4">
-              Nenhuma venda com localização — quando chegarem vendas, os países acendem automaticamente
+      {/* 4. MAPA MUNDI SURREAL DE VENDAS (A Funcionalidade Pedida) */}
+      <Card className="glass-card border-border overflow-hidden">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg font-bold flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary animate-pulse" />
+              Mapa Global de Vendas em Tempo Real
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Visualize de onde vêm suas vendas no mundo. Os países com vendas ativas acendem com brilho neon!
             </p>
-          )}
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+            {/* O Mapa Mundi Estilizado */}
+            <div className="relative rounded-2xl border border-border bg-[#090a0f] p-2 overflow-hidden shadow-2xl">
+              {tooltipCountry && (
+                <div className="absolute top-4 left-4 z-10 bg-black/80 border border-primary/40 backdrop-blur-md rounded-xl p-3 shadow-xl pointer-events-none">
+                  <p className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                    🌍 {tooltipCountry.name}
+                  </p>
+                  <p className="text-xs text-primary font-mono mt-1 font-bold">
+                    {tooltipCountry.count} venda(s) registrada(s)
+                  </p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    Total: <strong className="text-foreground">{fmt(tooltipCountry.total)}</strong>
+                  </p>
+                </div>
+              )}
+
+              <ComposableMap
+                projectionConfig={{ scale: 140, center: [0, 20] }}
+                className="w-full h-[320px] sm:h-[400px]"
+              >
+                <ZoomableGroup>
+                  <Geographies geography={GEO_URL}>
+                    {({ geographies }) =>
+                      geographies.map((geo) => {
+                        // Descobrir se este país tem vendas
+                        const numericId = geo.id;
+                        let matchedSales = { count: 0, total: 0 };
+                        let countryCodeFound = "";
+
+                        Object.entries(ISO_MAP).forEach(([code, isoId]) => {
+                          if (isoId === numericId && salesByCountry[code]) {
+                            matchedSales = salesByCountry[code];
+                            countryCodeFound = code;
+                          }
+                        });
+
+                        const hasSales = matchedSales.count > 0;
+
+                        return (
+                          <Geography
+                            key={geo.rsmKey}
+                            geography={geo}
+                            onMouseEnter={() => {
+                              if (hasSales) {
+                                setTooltipCountry({
+                                  name: COUNTRY_NAMES[countryCodeFound] || geo.properties.name,
+                                  count: matchedSales.count,
+                                  total: matchedSales.total,
+                                });
+                              }
+                            }}
+                            onMouseLeave={() => setTooltipCountry(null)}
+                            style={{
+                              default: {
+                                fill: hasSales ? "#00FF7F" : "#171923",
+                                stroke: hasSales ? "#00FF7F" : "#2d3748",
+                                strokeWidth: hasSales ? 1 : 0.5,
+                                outline: "none",
+                                filter: hasSales ? "drop-shadow(0 0 6px rgba(0,255,127,0.7))" : "none",
+                                transition: "all 0.3s ease",
+                              },
+                              hover: {
+                                fill: hasSales ? "#39FF14" : "#2d3748",
+                                stroke: "#00FF7F",
+                                strokeWidth: 1.5,
+                                outline: "none",
+                                cursor: hasSales ? "pointer" : "default",
+                              },
+                            }}
+                          />
+                        );
+                      })
+                    }
+                  </Geographies>
+                </ZoomableGroup>
+              </ComposableMap>
+            </div>
+
+            {/* Ranking dos Países que Mais Vendem */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+                Ranking de Vendas por País
+              </p>
+
+              {Object.keys(salesByCountry).length === 0 ? (
+                <div className="p-6 rounded-xl border border-dashed border-border text-center text-xs text-muted-foreground">
+                  Nenhuma venda internacional registrada ainda. Conecte webhooks para acender o mapa!
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {Object.entries(salesByCountry)
+                    .sort(([, a], [, b]) => b.count - a.count)
+                    .map(([code, data]) => (
+                      <div
+                        key={code}
+                        className="p-3 rounded-xl border border-border bg-card/60 flex items-center justify-between shadow-sm"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-7 w-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-xs font-bold font-mono text-primary">
+                            {code}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-foreground">
+                              {COUNTRY_NAMES[code] || code}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              {data.count} compra(s)
+                            </span>
+                          </div>
+                        </div>
+                        <span className="font-mono text-xs font-bold text-primary">
+                          {fmt(data.total)}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Modal: Editar Orçamento */}
+      <Dialog open={budgetModalOpen} onOpenChange={setBudgetModalOpen}>
+        <DialogContent className="glass-card border-border max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar Orçamento Diário</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-left">
+            <p className="text-xs text-muted-foreground">
+              Campanha: <strong className="text-foreground">{selectedCampaign?.name}</strong>
+            </p>
+            <div className="space-y-1">
+              <span className="text-xs font-semibold">Novo Orçamento Diário ({current?.currency}):</span>
+              <Input
+                type="number"
+                value={newBudget}
+                onChange={(e) => setNewBudget(e.target.value)}
+                className="font-mono text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button variant="outline" onClick={() => setBudgetModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveBudget} className="gradient-primary text-primary-foreground font-semibold">
+              Salvar no Facebook
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
