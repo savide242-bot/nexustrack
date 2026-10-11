@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboard } from "@/contexts/DashboardContext";
@@ -105,18 +105,27 @@ export default function Integrations() {
       return;
     }
 
-    const { error } = await supabase
-      .from("dashboards")
+    let res = await supabase
+      .from("operations")
       .update({
         fb_ad_account_id: account.id,
-        fb_ad_account_name: account.name,
-        fb_account_currency: account.currency,
-        fb_connected_at: new Date().toISOString(),
       })
       .eq("id", current.id);
 
-    if (error) {
-      toast({ title: "Erro ao associar conta", description: error.message, variant: "destructive" });
+    if (res.error && res.error.message.includes("schema cache")) {
+      res = await supabase
+        .from("dashboards" as any)
+        .update({
+          fb_ad_account_id: account.id,
+          fb_ad_account_name: account.name,
+          fb_account_currency: account.currency,
+          fb_connected_at: new Date().toISOString(),
+        })
+        .eq("id", current.id);
+    }
+
+    if (res.error) {
+      toast({ title: "Erro ao associar conta", description: res.error.message, variant: "destructive" });
       return;
     }
 

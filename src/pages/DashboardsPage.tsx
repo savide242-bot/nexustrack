@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboard, type Dashboard } from "@/contexts/DashboardContext";
@@ -91,17 +91,22 @@ export default function DashboardsPage() {
       user_id: user.id,
       name: form.name.trim(),
       currency: form.currency,
-      timezone: form.timezone,
       kind: "paid",
     };
 
-    const { error } = editing
-      ? await supabase.from("dashboards").update(payload).eq("id", editing.id)
-      : await supabase.from("dashboards").insert(payload);
+    let res = editing
+      ? await supabase.from("operations").update(payload).eq("id", editing.id)
+      : await supabase.from("operations").insert(payload);
+
+    if (res.error && res.error.message.includes("schema cache")) {
+      res = editing
+        ? await supabase.from("dashboards" as any).update(payload).eq("id", editing.id)
+        : await supabase.from("dashboards" as any).insert(payload);
+    }
 
     setLoading(false);
-    if (error) {
-      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+    if (res.error) {
+      toast({ title: "Erro ao salvar", description: res.error.message, variant: "destructive" });
       return;
     }
 
@@ -112,7 +117,10 @@ export default function DashboardsPage() {
 
   const handleDelete = async (d: Dashboard) => {
     if (!confirm(`Tem certeza que deseja apagar a dashboard "${d.name}"?`)) return;
-    await supabase.from("dashboards").delete().eq("id", d.id);
+    let res = await supabase.from("operations").delete().eq("id", d.id);
+    if (res.error && res.error.message.includes("schema cache")) {
+      res = await supabase.from("dashboards" as any).delete().eq("id", d.id);
+    }
     toast({ title: "Dashboard apagada" });
     await reloadDashboards();
   };

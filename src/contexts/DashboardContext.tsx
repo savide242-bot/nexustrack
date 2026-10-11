@@ -7,24 +7,21 @@ export interface Dashboard {
   id: string;
   user_id: string;
   name: string;
-  language: string;
+  language?: string;
   currency: string;
-  timezone: string;
-  kind: string;
-  fb_ad_account_id: string | null;
-  fb_ad_account_name: string | null;
-  fb_account_currency: string | null;
-  fb_connected_at: string | null;
-  revenue_goal: number;
-  revenue_goal_period: string;
-  revenue_goal_metric: string;
-  product_cost: number;
-  payment_fee_pct: number;
-  other_costs: number;
-  webhook_secret: string;
-  is_active: boolean;
+  timezone?: string;
+  kind?: string;
+  fb_ad_account_id?: string | null;
+  fb_ad_account_name?: string | null;
+  fb_account_currency?: string | null;
+  revenue_goal?: number;
+  revenue_goal_period?: string;
+  revenue_goal_metric?: string;
+  product_cost?: number;
+  payment_fee_pct?: number;
+  other_costs?: number;
+  is_active?: boolean;
   created_at: string;
-  updated_at: string;
 }
 
 interface DashboardContextType {
@@ -67,13 +64,25 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const loadDashboards = useCallback(async () => {
     if (!user) { setDashboards([]); setLoading(false); return; }
     setLoading(true);
-    const { data } = await supabase
-      .from("dashboards")
+
+    // Tenta primeiro "operations" (tabela existente no Supabase), ou fallback para "dashboards"
+    let res = await supabase
+      .from("operations")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: true });
-    const list = (data || []) as Dashboard[];
+
+    if (res.error && res.error.message.includes("schema cache")) {
+      res = await supabase
+        .from("dashboards" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
+    }
+
+    const list = (res.data || []) as Dashboard[];
     setDashboards(list);
+
     if (!selectedId || !list.find((d) => d.id === selectedId)) {
       const first = list[0]?.id || "";
       setSelectedId(first);
@@ -90,7 +99,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   };
 
   const current = dashboards.find((d) => d.id === selectedId) || null;
-  const cur = current?.currency || "USD";
+  const cur = current?.currency || "MZN";
 
   const fmt = useCallback((n: number) => formatCurrency(n, cur), [cur]);
   const cv = useCallback((amount: number, from: string) => convert(amount, from, cur, rates), [cur, rates]);

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboard } from "@/contexts/DashboardContext";
@@ -68,25 +68,20 @@ export default function Index() {
       .gte("sale_date", fromIso)
       .lte("sale_date", toIso);
 
-    if (current.id) {
-      salesQuery = salesQuery.or(`dashboard_id.eq.${current.id},dashboard_id.is.null`);
+    if (current?.id) {
+      salesQuery = salesQuery.or(`operation_id.eq.${current.id},operation_id.is.null`);
     }
 
     const { data: salesData } = await salesQuery;
     setSales(salesData || []);
 
-    // 2. Carregar leads da dashboard
-    let leadsQuery = supabase
+    // 2. Carregar leads
+    const { count } = await supabase
       .from("leads_clicks")
       .select("id", { count: "exact", head: true })
       .gte("created_at", fromIso)
       .lte("created_at", toIso);
 
-    if (current.id) {
-      leadsQuery = leadsQuery.or(`dashboard_id.eq.${current.id},dashboard_id.is.null`);
-    }
-
-    const { count } = await leadsQuery;
     setLeadsCount(count || 0);
 
     // 3. Se houver conta do Facebook Ads associada à Dashboard, carregar investimento real
