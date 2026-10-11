@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/EmptyState";
 import { CURRENCIES, convert, fetchRates, formatCurrency, type Rates } from "@/lib/currency";
-import { Copy, Facebook, LayoutDashboard, Loader2, Pencil, Plus } from "lucide-react";
+import { ArrowRight, Copy, Facebook, LayoutDashboard, Loader2, Pencil, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useFacebookConnect } from "@/hooks/use-facebook-connect";
 import { useDashboard } from "@/contexts/DashboardContext";
 
@@ -31,7 +32,8 @@ export default function Dashboards() {
   const { user } = useAuth();
   const { toast } = useToast();
   const fb = useFacebookConnect();
-  const { reload: reloadCtx } = useDashboard();
+  const navigate = useNavigate();
+  const { reload: reloadCtx, activeId, setActiveId } = useDashboard();
   const [items, setItems] = useState<Dash[]>([]);
   const [revenue, setRevenue] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -107,8 +109,10 @@ export default function Dashboards() {
             const goal = Number(d.revenue_goal || 0);
             const rev = convert(revenue[d.id] || 0, "MZN", d.currency, rates);
             const pct = goal > 0 ? Math.min(100, (rev / goal) * 100) : 0;
+            const isActive = activeId === d.id;
+            const select = () => { setActiveId(d.id); toast({ title: `Dashboard "${d.name}" activa`, description: "Todo o app agora mostra só os dados desta dashboard." }); navigate("/"); };
             return (
-              <Card key={d.id} className="border-border">
+              <Card key={d.id} onClick={select} className={`cursor-pointer transition-all hover:border-primary/60 ${isActive ? "border-primary ring-1 ring-primary/50" : "border-border"}`}>
                 <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
                   <div className="min-w-0">
                     <CardTitle className="text-base truncate flex items-center gap-2">
@@ -121,7 +125,10 @@ export default function Dashboards() {
                       <Badge variant="outline">{d.timezone}</Badge>
                     </div>
                   </div>
-                  <Button size="icon" variant="ghost" onClick={() => startEdit(d)}><Pencil className="h-4 w-4" /></Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {isActive && <Badge className="text-[10px]">Activa</Badge>}
+                    <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); startEdit(d); }}><Pencil className="h-4 w-4" /></Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <div>
@@ -140,6 +147,9 @@ export default function Dashboards() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">Conta de anúncios: {fb.accounts.find((a) => a.id.replace(/^act_/, "") === d.fb_ad_account_id)?.name || (d.fb_ad_account_id ? `act_${d.fb_ad_account_id}` : "nenhuma")} · Atribuição: {d.attribution_window_days} dias</p>
+                  <Button variant={isActive ? "secondary" : "default"} className="w-full gap-1" onClick={(e) => { e.stopPropagation(); select(); }}>
+                    {isActive ? "A ver esta dashboard" : "Abrir esta dashboard"}<ArrowRight className="h-4 w-4" />
+                  </Button>
                 </CardContent>
               </Card>
             );
