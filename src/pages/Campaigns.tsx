@@ -1,3 +1,4 @@
+import { useDashboard, scopeOp } from "@/contexts/DashboardContext";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -97,6 +98,7 @@ interface AdAccount {
 
 export default function Campaigns() {
   const { user } = useAuth();
+  const { activeId } = useDashboard();
   const { toast } = useToast();
 
   // FB SDK state
@@ -187,6 +189,7 @@ export default function Campaigns() {
     const { from, to } = getPresetRange(datePreset);
     const { data } = await (supabase.from("sales") as any)
       .select("amount_mzn, status, sale_date, leads_clicks(country, utm_campaign)")
+      .match(activeId ? { operation_id: activeId } : {})
       .gte("sale_date", from.toISOString())
       .lte("sale_date", to.toISOString());
     if (!data) return;
@@ -220,7 +223,7 @@ export default function Campaigns() {
     setSalesByCountry(map);
     setAttribution(attr);
     setAttributionSummary({ attributedRevenue, attributedCount, organicRevenue, organicCount });
-  }, [datePreset]);
+  }, [datePreset, activeId]);
 
   useEffect(() => {
     if (!user) return;

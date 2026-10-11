@@ -11,7 +11,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/EmptyState";
 import { CURRENCIES, convert, fetchRates, formatCurrency, type Rates } from "@/lib/currency";
-import { Copy, LayoutDashboard, Pencil, Plus } from "lucide-react";
+import { Copy, Facebook, LayoutDashboard, Loader2, Pencil, Plus } from "lucide-react";
+import { useFacebookConnect } from "@/hooks/use-facebook-connect";
+import { useDashboard } from "@/contexts/DashboardContext";
 
 const LANGS = [{ v: "pt", l: "Português" }, { v: "en", l: "English" }, { v: "es", l: "Español" }];
 const TZS = ["Africa/Maputo", "Africa/Johannesburg", "Africa/Luanda", "Africa/Lagos", "Europe/Lisbon", "America/Sao_Paulo", "America/New_York", "UTC"];
@@ -28,6 +30,8 @@ const empty = {
 export default function Dashboards() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const fb = useFacebookConnect();
+  const { reload: reloadCtx } = useDashboard();
   const [items, setItems] = useState<Dash[]>([]);
   const [revenue, setRevenue] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -65,7 +69,7 @@ export default function Dashboards() {
     const payload = {
       user_id: user.id, name: form.name.trim().slice(0, 80), currency: form.currency, language: form.language,
       timezone: form.timezone, kind: form.kind, color: form.color,
-      fb_ad_account_id: form.fb_ad_account_id.trim() || null,
+      fb_ad_account_id: form.fb_ad_account_id.trim().replace(/^act_/, "") || null,
       revenue_goal: form.revenue_goal === "" ? null : Math.max(0, Number(form.revenue_goal)),
       goal_period: form.goal_period, traffic_sources: form.traffic_sources,
       attribution_window_days: Math.min(90, Math.max(1, Number(form.attribution_window_days) || 7)),
@@ -75,7 +79,7 @@ export default function Dashboards() {
       : await supabase.from("operations").insert(payload as any);
     if (error) return toast({ title: "Erro ao guardar", description: error.message, variant: "destructive" });
     toast({ title: editing ? "Dashboard actualizada" : "Dashboard criada" });
-    setOpen(false); load();
+    setOpen(false); load(); reloadCtx();
   };
 
   const webhookUrl = (d: Dash) =>
@@ -135,7 +139,7 @@ export default function Dashboards() {
                       <Button size="icon" variant="outline" className="h-8 w-8 shrink-0" onClick={() => copy(webhookUrl(d))}><Copy className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Conta de anúncios: {d.fb_ad_account_id || "nenhuma"} · Atribuição: {d.attribution_window_days} dias</p>
+                  <p className="text-xs text-muted-foreground">Conta de anúncios: {fb.accounts.find((a) => a.id.replace(/^act_/, "") === d.fb_ad_account_id)?.name || (d.fb_ad_account_id ? `act_${d.fb_ad_account_id}` : "nenhuma")} · Atribuição: {d.attribution_window_days} dias</p>
                 </CardContent>
               </Card>
             );
@@ -170,7 +174,20 @@ export default function Dashboards() {
                   <SelectContent><SelectItem value="paid">Tráfego pago</SelectItem><SelectItem value="organic">Orgânico</SelectItem></SelectContent>
                 </Select></div>
             </div>
-            <div><Label>Conta de anúncios (act_...)</Label><Input value={form.fb_ad_account_id} onChange={(e) => setForm({ ...form, fb_ad_account_id: e.target.value })} placeholder="act_123456789" /></div>
+            <div className="space-y-2"><Label>Conta de anúncios do Facebook</Label>
+              {fb.accounts.length > 0 ? (
+                <Select value={form.fb_ad_account_id || "none"} onValueChange={(v) => setForm({ ...form, fb_ad_account_id: v === "none" ? "" : v })}>
+                  <SelectTrigger><SelectValue placeholder="Escolhe a conta" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem conta de anúncios</SelectItem>
+                    {fb.accounts.map((a) => <SelectItem key={a.id} value={a.id.replace(/^act_/, "")}>{a.name}{a.currency ? ` (${a.currency})` : ""}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Button type="button" variant="outline" className="w-full gap-2" onClick={fb.connect} disabled={fb.connecting}>
+                  {fb.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4" />}Ligar conta do Facebook para escolher
+                </Button>
+              )}</div>
             <div><Label>Fontes de tráfego</Label>
               <div className="flex flex-wrap gap-1 mt-1">{SOURCES.map((s) => (
                 <Badge key={s} onClick={() => toggleSource(s)} variant={form.traffic_sources.includes(s) ? "default" : "outline"} className="cursor-pointer">{s}</Badge>
