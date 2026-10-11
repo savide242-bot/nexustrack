@@ -548,11 +548,6 @@ export default function Ads() {
                   <p className="text-xs text-muted-foreground">
                     Abre uma janela do Facebook para fazeres login com a conta que gere os anúncios. Depois escolhes aqui qual conta de anúncios pertence a esta operação.
                   </p>
-                  <Input
-                    value={form.fb_ad_account_id}
-                    onChange={(e) => setForm({ ...form, fb_ad_account_id: e.target.value })}
-                    placeholder="Ou cola o número da conta: 1234567890123456"
-                  />
                 </>
               )}
             </div>
