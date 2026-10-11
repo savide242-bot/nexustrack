@@ -125,7 +125,10 @@ export default function Dashboards() {
                       <Badge variant="outline">{d.timezone}</Badge>
                     </div>
                   </div>
-                  <Button size="icon" variant="ghost" onClick={() => startEdit(d)}><Pencil className="h-4 w-4" /></Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {isActive && <Badge className="text-[10px]">Activa</Badge>}
+                    <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); startEdit(d); }}><Pencil className="h-4 w-4" /></Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <div>
