@@ -14,6 +14,7 @@ import {
   Check, Copy, Plus, RefreshCw, Facebook, ExternalLink,
   ChevronRight, ChevronDown, Trash2, Settings, Loader2, Video, Clapperboard, Music2, LayoutGrid
 } from "lucide-react";
+import { PixelManager } from "@/components/PixelManager";
 
 interface FbAccount {
   id: string;
@@ -554,32 +555,8 @@ export default function Integrations() {
         </Card>
       )}
 
-      {/* ABA 4: PIXEL & SCRIPT */}
-      {activeTab === "pixel" && (
-        <Card className="glass-card border-border">
-          <CardHeader>
-            <CardTitle className="text-lg">Script de Rastreamento (Página de Vendas)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <p className="text-xs text-muted-foreground">
-              Instale este script no cabeçalho (<code>&lt;head&gt;</code>) da sua página de vendas para capturar visitantes e compras.
-            </p>
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold">Código JavaScript:</Label>
-              <div className="flex gap-2">
-                <Input readOnly value={trackingScriptCode} className="font-mono text-xs bg-muted/20 text-emerald-400" />
-                <Button
-                  onClick={() => copyToClipboard(trackingScriptCode, "script")}
-                  className="gradient-primary text-primary-foreground shrink-0 gap-1.5"
-                >
-                  {copiedText === "script" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  Copiar Script
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* ABA 4: PIXEL & REGRAS (ESTILO UTMIFY POTENTE) */}
+      {activeTab === "pixel" && <PixelManager />}
 
       {/* ABA 5: TESTES */}
       {activeTab === "tests" && (

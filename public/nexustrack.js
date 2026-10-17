@@ -1,13 +1,48 @@
-﻿/**
- * NexusTrack - Pixel & Tracking Script (Universal UTMify Engine)
- * Leve, não-bloqueante e com persistência de parâmetros em cookies/localStorage.
+/**
+ * NexusTrack - Universal Pixel & Tracking Engine v2
+ * Compatibilidade total com Meta Ads (Facebook), Google Ads, TikTok e UTMify.
+ * Rastreamento de PageView, ViewContent, InitiateCheckout e deduplicação oficial com CAPI.
  */
 (function (window, document) {
   'use strict';
 
   var STORAGE_KEY = 'nx_attribution_data';
   var API_URL = 'https://qjfnosljbyqzyrfhiybi.supabase.co/functions/v1/track';
+  var CTA_URL = 'https://qjfnosljbyqzyrfhiybi.supabase.co/functions/v1/track-cta';
 
+  // 1. Extrair atributos do script tag
+  var currentScript = document.currentScript || (function () {
+    var scripts = document.getElementsByTagName('script');
+    for (var i = scripts.length - 1; i >= 0; i--) {
+      if (scripts[i].src && scripts[i].src.indexOf('nexustrack.js') > -1) {
+        return scripts[i];
+      }
+    }
+    return null;
+  })();
+
+  var pixelId = currentScript ? (currentScript.getAttribute('data-pixel-id') || '') : '';
+  var metaPixelsRaw = currentScript ? (currentScript.getAttribute('data-meta-pixels') || '') : '';
+  var checkoutTextsRaw = currentScript ? (currentScript.getAttribute('data-checkout-texts') || '') : '';
+  var autoKeywords = currentScript ? currentScript.getAttribute('data-auto-keywords') !== 'false' : true;
+
+  var metaPixelIds = metaPixelsRaw ? metaPixelsRaw.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : [];
+  var checkoutTexts = [];
+  try {
+    if (checkoutTextsRaw) {
+      checkoutTexts = decodeURIComponent(checkoutTextsRaw).split('|').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+    }
+  } catch (e) {
+    checkoutTexts = [];
+  }
+
+  // Palavras-chave padrão para detecção automática de botões de compra
+  var defaultCheckoutKeywords = [
+    'comprar', 'checkout', 'adquirir', 'garantir', 'pagar', 'quero', 'assinar',
+    'matricular', 'inscrição', 'acesso', 'levar agora', 'plano', 'order now', 'buy now'
+  ];
+
+  // 2. Utilitários de cookies e parâmetros
   function getParam(name) {
     try {
       var url = new URL(window.location.href);
@@ -28,15 +63,19 @@
     document.cookie = name + '=' + encodeURIComponent(val) + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
   }
 
-  // 1. Extração de Identificadores
-  var currentUrl = new URL(window.location.href);
-  var fbclid = getParam('fbclid');
-  var fbp = getCookie('_fbp');
-  var fbc = getCookie('_fbc') || (fbclid ? 'fb.1.' + Date.now() + '.' + fbclid : '');
+  function generateEventId(prefix) {
+    return (prefix || 'evt') + '_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+  }
 
+  // 3. Captura e persistência de identificadores Meta (fbclid, _fbp, _fbc)
+  var fbclid = getParam('fbclid');
+  var fbp = getCookie('_fbp') || ('fb.1.' + Date.now() + '.' + Math.floor(Math.random() * 1000000000));
+  var fbc = getCookie('_fbc') || (fbclid ? ('fb.1.' + Date.now() + '.' + fbclid) : '');
+
+  setCookie('_fbp', fbp, 90);
   if (fbc) setCookie('_fbc', fbc, 90);
 
-  // 2. Extração de UTMs
+  // 4. Captura de Parâmetros UTM
   var utms = {
     utm_source: getParam('utm_source'),
     utm_medium: getParam('utm_medium'),
@@ -46,7 +85,6 @@
     nx_dash: getParam('nx_dash'),
   };
 
-  // 3. Persistência de Atribuição (First Touch / Last Touch)
   var saved = {};
   try {
     var raw = localStorage.getItem(STORAGE_KEY);
@@ -70,34 +108,145 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(attribution));
   } catch (e) {}
 
-  // 4. Mecanismo de Disparo
-  function sendEvent(eventType, eventData) {
+  // 5. Inicialização Inteligente do Facebook Pixel (fbq)
+  if (!window.fbq) {
+    (function (f, b, e, v, n, t, s) {
+      if (f.fbq) return;
+      n = f.fbq = function () {
+        n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+      };
+      if (!f._fbq) f._fbq = n;
+      n.push = n;
+      n.loaded = true;
+      n.version = '2.0';
+      n.queue = [];
+      t = b.createElement(e);
+      t.async = true;
+      t.src = v;
+      s = b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t, s);
+    })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+  }
+
+  // Inicializar todos os Pixels da Meta configurados
+  for (var m = 0; m < metaPixelIds.length; m++) {
+    try {
+      window.fbq('init', metaPixelIds[m]);
+    } catch (err) {}
+  }
+
+  // 6. Envio de Eventos para a API do NexusTrack
+  function sendEvent(eventType, eventData, eventId) {
     var payload = Object.assign({}, attribution, {
       event_type: eventType,
+      event_id: eventId || generateEventId('nx'),
+      pixel_id: pixelId,
       page_url: window.location.href,
       referrer: document.referrer,
       user_agent: navigator.userAgent,
     }, eventData || {});
 
-    // Usa fetch assíncrono ou sendBeacon
+    var bodyStr = JSON.stringify(payload);
     if (navigator.sendBeacon) {
-      navigator.sendBeacon(API_URL, JSON.stringify(payload));
+      navigator.sendBeacon(API_URL, bodyStr);
     } else {
       fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: bodyStr,
         keepalive: true,
       }).catch(function () {});
     }
   }
 
-  // 5. Expor API Global
-  window.nxTrack = function (eventName, data) {
-    sendEvent(eventName, data);
-  };
+  // 7. Auto-track PageView no Facebook Pixel e NexusTrack com Deduplicação
+  var pageViewEventId = generateEventId('pv');
+  try {
+    window.fbq('track', 'PageView', {}, { eventID: pageViewEventId });
+  } catch (err) {}
+  sendEvent('PageView', { title: document.title }, pageViewEventId);
 
-  // 6. Auto-track PageView
-  sendEvent('PageView', { title: document.title });
+  // 8. Detecção Automática de Cliques em Botões de Compra (Initiate Checkout)
+  var trackedClicks = {};
+
+  document.addEventListener('click', function (e) {
+    var el = e.target;
+    if (!el) return;
+
+    // Buscar elemento clicável pai se clicou em ícone ou texto interno
+    var clickable = el.closest('button, a, input[type="submit"], input[type="button"], [role="button"]');
+    if (!clickable) return;
+
+    var text = (clickable.innerText || clickable.value || '').trim().toLowerCase();
+    var href = (clickable.getAttribute('href') || '').toLowerCase();
+
+    var isCheckoutTrigger = false;
+
+    // Verificar se o texto contém algum dos termos configurados
+    if (checkoutTexts.length > 0) {
+      for (var t = 0; t < checkoutTexts.length; t++) {
+        if (text.indexOf(checkoutTexts[t]) > -1) {
+          isCheckoutTrigger = true;
+          break;
+        }
+      }
+    }
+
+    // Se detecção automática estiver ativa, checar palavras-chave comuns
+    if (!isCheckoutTrigger && autoKeywords) {
+      for (var k = 0; k < defaultCheckoutKeywords.length; k++) {
+        if (text.indexOf(defaultCheckoutKeywords[k]) > -1) {
+          isCheckoutTrigger = true;
+          break;
+        }
+      }
+    }
+
+    // Checar se o link aponta para gateways conhecidos
+    var checkoutDomains = ['kiwify', 'hotmart', 'perfectpay', 'eduzz', 'monetizze', 'braip', 'cartpanda', 'stripe', 'checkout'];
+    if (!isCheckoutTrigger && href) {
+      for (var d = 0; d < checkoutDomains.length; d++) {
+        if (href.indexOf(checkoutDomains[d]) > -1) {
+          isCheckoutTrigger = true;
+          break;
+        }
+      }
+    }
+
+    if (isCheckoutTrigger) {
+      var clickKey = text + '_' + href;
+      var now = Date.now();
+      // Evitar duplo disparo consecutivo no mesmo clique
+      if (trackedClicks[clickKey] && (now - trackedClicks[clickKey] < 2000)) {
+        return;
+      }
+      trackedClicks[clickKey] = now;
+
+      var checkoutEventId = generateEventId('ic');
+
+      // 1. Disparar no Facebook Pixel oficial com eventID
+      try {
+        window.fbq('track', 'InitiateCheckout', {
+          content_name: document.title,
+          currency: 'USD',
+        }, { eventID: checkoutEventId });
+      } catch (err) {}
+
+      // 2. Disparar para o backend NexusTrack (para registro e eventual CAPI)
+      sendEvent('InitiateCheckout', {
+        button_text: text.slice(0, 200),
+        button_href: href.slice(0, 500),
+      }, checkoutEventId);
+    }
+  }, true);
+
+  // 9. Expor API Global para o cliente disparar manualmente se desejar
+  window.nxTrack = function (eventName, data) {
+    var customEventId = generateEventId('custom');
+    try {
+      window.fbq('trackCustom', eventName, data || {}, { eventID: customEventId });
+    } catch (err) {}
+    sendEvent(eventName, data, customEventId);
+  };
 
 })(window, document);
