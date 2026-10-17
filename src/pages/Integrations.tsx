@@ -24,6 +24,7 @@ interface FbAccount {
   status?: number;
 }
 
+const OFFICIAL_FB_APP_ID = "1108905534695999";
 const FB_APP_ID_KEY = "nx_fb_app_id";
 
 export default function Integrations() {
@@ -121,12 +122,7 @@ export default function Integrations() {
     return () => window.removeEventListener("message", handleAuthMessage);
   }, []);
 
-  const openFacebookPopup = (appIdToUse: string) => {
-    if (!appIdToUse.trim()) {
-      setAppIdModalOpen(true);
-      return;
-    }
-
+  const openFacebookPopup = (appIdToUse = OFFICIAL_FB_APP_ID) => {
     const width = 600;
     const height = 750;
     const left = window.screenX + (window.outerWidth - width) / 2;
@@ -158,12 +154,7 @@ export default function Integrations() {
   };
 
   const handleStartConnect = () => {
-    const savedAppId = localStorage.getItem(FB_APP_ID_KEY) || appIdInput;
-    if (!savedAppId) {
-      setAppIdModalOpen(true);
-    } else {
-      openFacebookPopup(savedAppId);
-    }
+    openFacebookPopup(OFFICIAL_FB_APP_ID);
   };
 
   const handleSaveAppIdAndOpen = () => {
@@ -429,29 +420,35 @@ export default function Integrations() {
                     </div>
                   </div>
                 ) : (
-                  <div className="p-6 rounded-xl border border-dashed border-border/80 bg-card/40 text-center space-y-4">
-                    <p className="text-xs text-muted-foreground">Nenhum perfil do Facebook conectado ainda.</p>
-                    <div className="flex flex-wrap items-center justify-center gap-3">
+                  <div className="p-8 rounded-xl border border-dashed border-border/80 bg-card/40 text-center space-y-4">
+                    <div className="mx-auto w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center">
+                      <Facebook className="h-6 w-6 text-blue-400 fill-current" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">Conecte sua conta do Facebook</h4>
+                      <p className="text-xs text-muted-foreground mt-0.5 max-w-sm mx-auto">
+                        Faça login na sua conta do Facebook para importar suas contas de anúncios e gerenciar suas campanhas em tempo real.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-center justify-center gap-2 pt-1">
                       <Button
-                        onClick={() => setDirectTokenModalOpen(true)}
-                        className="gradient-primary text-primary-foreground text-xs gap-2 h-10 px-5 shadow-lg shadow-primary/20 font-semibold"
-                      >
-                        <Zap className="h-4 w-4" />
-                        Conectar com Token Direto (Recomendado)
-                      </Button>
-                      <Button
-                        variant="outline"
                         onClick={handleStartConnect}
                         disabled={connecting}
-                        className="text-xs gap-2 h-10 px-4 border-border hover:bg-muted/30"
+                        className="gradient-primary text-primary-foreground text-sm gap-2.5 h-11 px-7 shadow-xl shadow-primary/20 font-semibold hover:scale-[1.02] transition-transform"
                       >
-                        {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4 fill-current text-blue-400" />}
-                        Conectar via Pop-up OAuth
+                        {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4 fill-current" />}
+                        Conectar com Facebook
                       </Button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDirectTokenModalOpen(true)}
+                        className="text-[11px] text-muted-foreground/70 hover:text-primary transition-colors underline flex items-center gap-1 mt-2"
+                      >
+                        <Zap className="h-3 w-3" /> Alternativa: Inserir Token de Acesso Manual
+                      </button>
                     </div>
-                    <p className="text-[11px] text-muted-foreground max-w-md mx-auto">
-                      💡 <strong>Dica:</strong> A conexão por <em>Token Direto</em> é a forma mais rápida, segura e livre dos bloqueios de verificação da Meta.
-                    </p>
                   </div>
                 )}
 
