@@ -12,7 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Share2, Radio, FileText, Code2, FlaskConical,
   Check, Copy, Plus, RefreshCw, Facebook, ExternalLink,
-  ChevronRight, ChevronDown, Trash2, Settings, Loader2, Video, Clapperboard, Music2, LayoutGrid
+  ChevronRight, ChevronDown, Trash2, Settings, Loader2, Video, Clapperboard, Music2, LayoutGrid,
+  Zap, Key, ShieldCheck
 } from "lucide-react";
 import { PixelManager } from "@/components/PixelManager";
 
@@ -44,6 +45,11 @@ export default function Integrations() {
   const [appIdInput, setAppIdInput] = useState(() => {
     return localStorage.getItem(FB_APP_ID_KEY) || "";
   });
+
+  // Direct Token Modal
+  const [directTokenModalOpen, setDirectTokenModalOpen] = useState(false);
+  const [directTokenInput, setDirectTokenInput] = useState("");
+  const [validatingToken, setValidatingToken] = useState(false);
 
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
@@ -168,6 +174,60 @@ export default function Integrations() {
     localStorage.setItem(FB_APP_ID_KEY, appIdInput.trim());
     setAppIdModalOpen(false);
     openFacebookPopup(appIdInput.trim());
+  };
+
+  const handleConnectDirectToken = async () => {
+    const token = directTokenInput.trim();
+    if (!token) {
+      toast({ title: "Token obrigatório", description: "Cole o token de acesso do Facebook.", variant: "destructive" });
+      return;
+    }
+
+    setValidatingToken(true);
+    try {
+      // 1. Validar token no Facebook Graph API diretamente
+      const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(token)}`);
+      const meData = await meRes.json();
+      if (meData.error) {
+        throw new Error(meData.error.message || "Token inválido ou expirado.");
+      }
+
+      // 2. Salvar no secrets-vault
+      const { error: vaultErr } = await supabase.functions.invoke("secrets-vault", {
+        body: { action: "set", kind: "meta_access_token", value: token },
+      });
+      if (vaultErr) throw vaultErr;
+
+      setProfileName(meData.name || "Facebook Conectado");
+
+      // 3. Buscar contas de anúncios
+      const { data: accData, error: accErr } = await supabase.functions.invoke("fb-list-accounts");
+      if (accErr) throw accErr;
+
+      if (accData?.accounts && accData.accounts.length > 0) {
+        setFbAccounts(accData.accounts);
+        toast({
+          title: "Facebook Conectado com Sucesso!",
+          description: `${accData.accounts.length} conta(s) de anúncio encontrada(s). Selecione a conta para vincular a esta dashboard.`,
+        });
+      } else {
+        toast({
+          title: "Perfil Autenticado!",
+          description: "Conexão estabelecida com sucesso. Nenhuma conta de anúncios foi retornada para este usuário.",
+        });
+      }
+
+      setDirectTokenModalOpen(false);
+      setDirectTokenInput("");
+    } catch (e: any) {
+      toast({
+        title: "Erro ao conectar Facebook",
+        description: e.message || "Falha na validação do token.",
+        variant: "destructive",
+      });
+    } finally {
+      setValidatingToken(false);
+    }
   };
 
   const handleSelectAccount = async (account: FbAccount) => {
@@ -345,10 +405,18 @@ export default function Integrations() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => setDirectTokenModalOpen(true)}
+                        className="h-8 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                      >
+                        <Zap className="h-3.5 w-3.5" /> Alterar Token
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={handleStartConnect}
                         className="h-8 text-xs gap-1"
                       >
-                        Reconectar
+                        Pop-up
                       </Button>
                       <Button
                         variant="ghost"
@@ -361,16 +429,29 @@ export default function Integrations() {
                     </div>
                   </div>
                 ) : (
-                  <div className="p-6 rounded-xl border border-dashed border-border/80 bg-card/40 text-center space-y-3">
+                  <div className="p-6 rounded-xl border border-dashed border-border/80 bg-card/40 text-center space-y-4">
                     <p className="text-xs text-muted-foreground">Nenhum perfil do Facebook conectado ainda.</p>
-                    <Button
-                      onClick={handleStartConnect}
-                      disabled={connecting}
-                      className="gradient-primary text-primary-foreground text-xs gap-2 h-10 px-5 shadow-lg shadow-primary/20 font-semibold"
-                    >
-                      {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4 fill-current" />}
-                      Conectar com Facebook (Pop-up)
-                    </Button>
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      <Button
+                        onClick={() => setDirectTokenModalOpen(true)}
+                        className="gradient-primary text-primary-foreground text-xs gap-2 h-10 px-5 shadow-lg shadow-primary/20 font-semibold"
+                      >
+                        <Zap className="h-4 w-4" />
+                        Conectar com Token Direto (Recomendado)
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleStartConnect}
+                        disabled={connecting}
+                        className="text-xs gap-2 h-10 px-4 border-border hover:bg-muted/30"
+                      >
+                        {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4 fill-current text-blue-400" />}
+                        Conectar via Pop-up OAuth
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground max-w-md mx-auto">
+                      💡 <strong>Dica:</strong> A conexão por <em>Token Direto</em> é a forma mais rápida, segura e livre dos bloqueios de verificação da Meta.
+                    </p>
                   </div>
                 )}
 
@@ -625,6 +706,88 @@ export default function Integrations() {
             <Button variant="outline" onClick={() => setAppIdModalOpen(false)}>Cancelar</Button>
             <Button onClick={handleSaveAppIdAndOpen} className="gradient-primary text-primary-foreground gap-1.5">
               <Facebook className="h-4 w-4 fill-current" /> Abrir Pop-up do Facebook
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Conexão Direta com Token do Facebook */}
+      <Dialog open={directTokenModalOpen} onOpenChange={setDirectTokenModalOpen}>
+        <DialogContent className="glass-card border-border max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Zap className="h-5 w-5 text-primary" />
+              Conectar Facebook Ads (Token Direto)
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 text-left py-1">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Esta é a forma <strong>mais rápida e infalível</strong> de conectar suas contas de anúncio da Meta sem enfrentar bloqueios de pop-up ou verificações da Meta.
+            </p>
+
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-foreground flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  Como obter seu Token em 1 minuto:
+                </span>
+                <a
+                  href="https://developers.facebook.com/tools/explorer/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline text-[11px] font-semibold flex items-center gap-1"
+                >
+                  Abrir Graph Explorer <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+
+              <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-[11px] leading-relaxed">
+                <li>Abra o <strong>Graph API Explorer</strong> no link acima.</li>
+                <li>
+                  No campo <strong>Permissões (Permissions)</strong>, adicione:{" "}
+                  <code className="text-primary bg-background/50 px-1 py-0.5 rounded">ads_read</code>,{" "}
+                  <code className="text-primary bg-background/50 px-1 py-0.5 rounded">ads_management</code> e{" "}
+                  <code className="text-primary bg-background/50 px-1 py-0.5 rounded">business_management</code>.
+                </li>
+                <li>Clique em <strong>Generate Access Token</strong> e confirme as permissões no Facebook.</li>
+                <li>Copie o token gerado e cole no campo abaixo:</li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Token de Acesso do Facebook (Access Token):</Label>
+              <textarea
+                value={directTokenInput}
+                onChange={(e) => setDirectTokenInput(e.target.value)}
+                placeholder="Cole aqui seu token (começa com EAAB... ou EAA...)"
+                rows={3}
+                className="w-full rounded-md border border-input bg-background/60 px-3 py-2 text-xs font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Seu token é salvo de forma criptografada no Supabase Vault e utilizado exclusivamente para consultar suas métricas e pausar/ativar seus anúncios.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" onClick={() => setDirectTokenModalOpen(false)} className="text-xs">
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConnectDirectToken}
+              disabled={validatingToken || !directTokenInput.trim()}
+              className="gradient-primary text-primary-foreground gap-1.5 text-xs"
+            >
+              {validatingToken ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Validando com a Meta...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" /> Validar e Puxar Minhas Contas
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
