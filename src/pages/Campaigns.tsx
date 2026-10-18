@@ -46,8 +46,11 @@ interface CampaignItem {
   cpc: number;
   ctr: number;
   purchases: number;
+  checkouts: number;
+  cost_per_checkout: number;
   revenue: number;
   roas: number;
+  roi: number;
   cpa: number;
   profit: number;
   margin: number;
@@ -118,12 +121,20 @@ export default function Campaigns() {
           const list: CampaignItem[] = resData.campaigns.map((c: any) => {
             const spend = cv(c.spend || 0, resData.account?.currency || "USD");
             const purchases = c.purchases || 0;
-            // Usa o faturamento real reportado pelo Facebook ou o valor exato registrado
+            const checkouts = c.checkouts || 0;
+            const impressions = c.impressions || 0;
+            const clicks = c.clicks || 0;
+            const cpm = cv(c.cpm || 0, resData.account?.currency || "USD");
+            const cpc = cv(c.cpc || 0, resData.account?.currency || "USD");
+            const ctr = c.ctr || (impressions > 0 ? (clicks / impressions) * 100 : 0);
+
             const realPlatformRevenue = Number(c.platform_revenue ?? c.revenue ?? 0);
             const revenue = cv(realPlatformRevenue, resData.account?.currency || "USD");
             const profit = revenue - spend;
             const roas = spend > 0 ? revenue / spend : 0;
+            const roi = spend > 0 ? (profit / spend) * 100 : 0;
             const cpa = purchases > 0 ? spend / purchases : 0;
+            const costPerCheckout = cv(c.cost_per_checkout || (checkouts > 0 ? spend / checkouts : 0), resData.account?.currency || "USD");
             const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
 
             return {
@@ -132,14 +143,17 @@ export default function Campaigns() {
               status: c.status || "PAUSED",
               daily_budget: cv((c.daily_budget || 0), resData.account?.currency || "USD"),
               spend,
-              impressions: c.impressions || 0,
-              clicks: c.clicks || 0,
-              cpm: c.cpm || 0,
-              cpc: c.cpc || 0,
-              ctr: c.ctr || 0,
+              impressions,
+              clicks,
+              cpm,
+              cpc,
+              ctr,
               purchases,
+              checkouts,
+              cost_per_checkout: costPerCheckout,
               revenue,
               roas,
+              roi,
               cpa,
               profit,
               margin,
@@ -383,28 +397,34 @@ export default function Campaigns() {
               <TableHeader className="bg-muted/30">
                 <TableRow className="border-border text-xs uppercase font-mono">
                   <TableHead className="w-12 text-center">Status</TableHead>
-                  <TableHead className="min-w-[200px]">Campanha</TableHead>
+                  <TableHead className="min-w-[180px]">Campanha</TableHead>
                   <TableHead className="text-right">Orçamento</TableHead>
                   <TableHead className="text-right">Vendas</TableHead>
                   <TableHead className="text-right">CPA</TableHead>
+                  <TableHead className="text-right">IC (Checkout)</TableHead>
+                  <TableHead className="text-right">CPI (Custo/IC)</TableHead>
                   <TableHead className="text-right">Gastos</TableHead>
                   <TableHead className="text-right">Faturamento</TableHead>
                   <TableHead className="text-right">Lucro</TableHead>
                   <TableHead className="text-right">ROAS</TableHead>
-                  <TableHead className="text-right">Margem</TableHead>
+                  <TableHead className="text-right">ROI</TableHead>
+                  <TableHead className="text-right">CTR</TableHead>
+                  <TableHead className="text-right">CPM</TableHead>
+                  <TableHead className="text-right">Cliques</TableHead>
+                  <TableHead className="text-right">Impressões</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="py-12 text-center text-xs text-muted-foreground">
+                    <TableCell colSpan={16} className="py-12 text-center text-xs text-muted-foreground">
                       <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
                       Carregando campanhas do Facebook Ads...
                     </TableCell>
                   </TableRow>
                 ) : filteredCampaigns.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="py-12 text-center text-xs text-muted-foreground">
+                    <TableCell colSpan={16} className="py-12 text-center text-xs text-muted-foreground">
                       Nenhuma campanha encontrada no período selecionado ou conta não conectada.
                     </TableCell>
                   </TableRow>
@@ -429,7 +449,7 @@ export default function Campaigns() {
 
                         {/* Nome da Campanha */}
                         <TableCell className="font-semibold text-foreground">
-                          <p className="truncate max-w-[240px]">{c.name}</p>
+                          <p className="truncate max-w-[220px]" title={c.name}>{c.name}</p>
                           <span className="text-[10px] text-muted-foreground font-mono">ID: {c.id}</span>
                         </TableCell>
 
@@ -456,11 +476,21 @@ export default function Campaigns() {
 
                         {/* CPA */}
                         <TableCell className="text-right font-mono">
-                          {c.cpa > 0 ? fmt(c.cpa) : "N/A"}
+                          {c.cpa > 0 ? fmt(c.cpa) : "—"}
+                        </TableCell>
+
+                        {/* IC (Initiate Checkout) */}
+                        <TableCell className="text-right font-mono font-semibold text-foreground">
+                          {c.checkouts}
+                        </TableCell>
+
+                        {/* CPI (Custo por Initiate Checkout) */}
+                        <TableCell className="text-right font-mono">
+                          {c.cost_per_checkout > 0 ? fmt(c.cost_per_checkout) : "—"}
                         </TableCell>
 
                         {/* Gastos */}
-                        <TableCell className="text-right font-mono text-foreground">
+                        <TableCell className="text-right font-mono text-foreground font-medium">
                           {fmt(c.spend)}
                         </TableCell>
 
@@ -476,12 +506,32 @@ export default function Campaigns() {
 
                         {/* ROAS */}
                         <TableCell className="text-right font-mono font-bold text-primary">
-                          {c.roas > 0 ? `${c.roas.toFixed(2)}x` : "N/A"}
+                          {c.roas > 0 ? `${c.roas.toFixed(2)}x` : "—"}
                         </TableCell>
 
-                        {/* Margem */}
-                        <TableCell className="text-right font-mono">
-                          {c.revenue > 0 ? `${c.margin.toFixed(1)}%` : "N/A"}
+                        {/* ROI */}
+                        <TableCell className={`text-right font-mono font-bold ${c.roi >= 0 ? "text-emerald-400" : "text-destructive"}`}>
+                          {c.spend > 0 ? `${c.roi.toFixed(1)}%` : "—"}
+                        </TableCell>
+
+                        {/* CTR */}
+                        <TableCell className="text-right font-mono font-medium">
+                          {c.ctr > 0 ? `${c.ctr.toFixed(2)}%` : "0.00%"}
+                        </TableCell>
+
+                        {/* CPM */}
+                        <TableCell className="text-right font-mono text-muted-foreground">
+                          {c.cpm > 0 ? fmt(c.cpm) : "—"}
+                        </TableCell>
+
+                        {/* Cliques */}
+                        <TableCell className="text-right font-mono text-foreground">
+                          {c.clicks.toLocaleString()}
+                        </TableCell>
+
+                        {/* Impressões */}
+                        <TableCell className="text-right font-mono text-muted-foreground">
+                          {c.impressions.toLocaleString()}
                         </TableCell>
                       </TableRow>
                     );

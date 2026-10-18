@@ -77,7 +77,13 @@ Deno.serve(async (req) => {
       const campaigns = (list.data || []).map((c: any) => {
         const i = byId.get(c.id) || {};
         const purchases = Number(i.actions?.find((a: any) => a.action_type === "purchase")?.value || 0);
+        const checkouts = Number(
+          i.actions?.find((a: any) => a.action_type === "initiate_checkout" || a.action_type === "omni_initiated_checkout")?.value || 0
+        );
         const cpp = Number(i.cost_per_action_type?.find((a: any) => a.action_type === "purchase")?.value || 0);
+        const cpic = Number(
+          i.cost_per_action_type?.find((a: any) => a.action_type === "initiate_checkout" || a.action_type === "omni_initiated_checkout")?.value || 0
+        );
         const roas = Number(i.purchase_roas?.[0]?.value || 0);
         const revenue = Number(i.action_values?.find((a: any) => a.action_type === "purchase")?.value || 0);
         return {
@@ -95,7 +101,9 @@ Deno.serve(async (req) => {
           cpm: Number(i.cpm || 0),
           ctr: Number(i.ctr || 0),
           purchases,
+          checkouts,
           cost_per_purchase: cpp,
+          cost_per_checkout: cpic,
           roas,
           platform_revenue: revenue,
         };
