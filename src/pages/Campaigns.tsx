@@ -65,7 +65,8 @@ export default function Campaigns() {
   const [activeMetaTab, setActiveMetaTab] = useState<"contas" | "campanhas" | "conjuntos" | "anuncios">("campanhas");
   const [loading, setLoading] = useState(false);
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
-  const [adsets, setAdsets] = useState<any[]>([]);
+  const [adsets, setAdsets] = useState<CampaignItem[]>([]);
+  const [ads, setAds] = useState<CampaignItem[]>([]);
 
   // Filtros idênticos à Foto 2 da UTMify
   const [searchName, setSearchName] = useState("");
@@ -82,7 +83,50 @@ export default function Campaigns() {
   const [salesByCountry, setSalesByCountry] = useState<Record<string, { count: number; total: number }>>({});
   const [tooltipCountry, setTooltipCountry] = useState<{ name: string; count: number; total: number } | null>(null);
 
-  // 1. Carregar Campanhas do Facebook Ads
+  const mapItem = (raw: any, accCurrency: string): CampaignItem => {
+    const spend = cv(raw.spend || 0, accCurrency || "USD");
+    const purchases = raw.purchases || 0;
+    const checkouts = raw.checkouts || 0;
+    const impressions = raw.impressions || 0;
+    const clicks = raw.clicks || 0;
+    const cpm = cv(raw.cpm || 0, accCurrency || "USD");
+    const cpc = cv(raw.cpc || 0, accCurrency || "USD");
+    const ctr = raw.ctr || (impressions > 0 ? (clicks / impressions) * 100 : 0);
+
+    const realPlatformRevenue = Number(raw.platform_revenue ?? raw.revenue ?? 0);
+    const revenue = cv(realPlatformRevenue, accCurrency || "USD");
+    const profit = revenue - spend;
+    const roas = spend > 0 ? revenue / spend : 0;
+    const roi = spend > 0 ? (profit / spend) * 100 : 0;
+    const cpa = purchases > 0 ? spend / purchases : 0;
+    const costPerCheckout = cv(raw.cost_per_checkout || (checkouts > 0 ? spend / checkouts : 0), accCurrency || "USD");
+    const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+    return {
+      id: raw.id || raw.ad_id || raw.adset_id || raw.campaign_id,
+      name: raw.name || raw.ad_name || raw.adset_name || raw.campaign_name || "Sem nome",
+      status: raw.status || "PAUSED",
+      daily_budget: cv((raw.daily_budget || 0), accCurrency || "USD"),
+      spend,
+      impressions,
+      clicks,
+      cpm,
+      cpc,
+      ctr,
+      purchases,
+      checkouts,
+      cost_per_checkout: costPerCheckout,
+      revenue,
+      roas,
+      roi,
+      cpa,
+      profit,
+      margin,
+      updated_at: raw.updated_time ? new Date(raw.updated_time).toLocaleDateString() : "Hoje",
+    };
+  };
+
+  // 1. Carregar Campanhas, Conjuntos e Anúncios do Facebook Ads
   const loadFacebookData = useCallback(async () => {
     if (!user || !current) return;
     setLoading(true);
@@ -106,75 +150,39 @@ export default function Campaigns() {
     });
     setSalesByCountry(countryMap);
 
-    // Buscar Campanhas da Meta Marketing API
+    // Buscar Campanhas, Conjuntos e Anúncios da Meta Marketing API
     if (accountId) {
       try {
-        const { data: resData, error } = await supabase.functions.invoke("fb-ads-control", {
-          body: {
-            action: "campaigns",
-            ad_account_id: accountId,
-            date_preset: dateFilter,
-          },
-        });
+        const [campRes, adsetRes, adsRes] = await Promise.all([
+          supabase.functions.invoke("fb-ads-control", {
+            body: { action: "campaigns", ad_account_id: accountId, date_preset: dateFilter },
+          }),
+          supabase.functions.invoke("fb-ads-control", {
+            body: { action: "adsets", ad_account_id: accountId, date_preset: dateFilter },
+          }),
+          supabase.functions.invoke("fb-ads-control", {
+            body: { action: "ads", ad_account_id: accountId, date_preset: dateFilter },
+          }),
+        ]);
 
-        if (resData?.campaigns) {
-          const list: CampaignItem[] = resData.campaigns.map((c: any) => {
-            const spend = cv(c.spend || 0, resData.account?.currency || "USD");
-            const purchases = c.purchases || 0;
-            const checkouts = c.checkouts || 0;
-            const impressions = c.impressions || 0;
-            const clicks = c.clicks || 0;
-            const cpm = cv(c.cpm || 0, resData.account?.currency || "USD");
-            const cpc = cv(c.cpc || 0, resData.account?.currency || "USD");
-            const ctr = c.ctr || (impressions > 0 ? (clicks / impressions) * 100 : 0);
+        const accCurrency = campRes.data?.account?.currency || "USD";
 
-            const realPlatformRevenue = Number(c.platform_revenue ?? c.revenue ?? 0);
-            const revenue = cv(realPlatformRevenue, resData.account?.currency || "USD");
-            const profit = revenue - spend;
-            const roas = spend > 0 ? revenue / spend : 0;
-            const roi = spend > 0 ? (profit / spend) * 100 : 0;
-            const cpa = purchases > 0 ? spend / purchases : 0;
-            const costPerCheckout = cv(c.cost_per_checkout || (checkouts > 0 ? spend / checkouts : 0), resData.account?.currency || "USD");
-            const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-
-            return {
-              id: c.id || c.campaign_id,
-              name: c.name || c.campaign_name || `Campanha ${c.id || c.campaign_id}`,
-              status: c.status || "PAUSED",
-              daily_budget: cv((c.daily_budget || 0), resData.account?.currency || "USD"),
-              spend,
-              impressions,
-              clicks,
-              cpm,
-              cpc,
-              ctr,
-              purchases,
-              checkouts,
-              cost_per_checkout: costPerCheckout,
-              revenue,
-              roas,
-              roi,
-              cpa,
-              profit,
-              margin,
-              updated_at: c.updated_time ? new Date(c.updated_time).toLocaleDateString() : "Hoje",
-            };
-          });
-          setCampaigns(list);
+        if (campRes.data?.campaigns) {
+          setCampaigns(campRes.data.campaigns.map((c: any) => mapItem(c, accCurrency)));
         }
-
-        // Buscar Conjuntos se aba selecionada
-        const { data: adsetData } = await supabase.functions.invoke("fb-ads-control", {
-          body: { action: "adsets", ad_account_id: accountId, date_preset: dateFilter },
-        });
-        if (adsetData?.adsets) {
-          setAdsets(adsetData.adsets);
+        if (adsetRes.data?.adsets) {
+          setAdsets(adsetRes.data.adsets.map((a: any) => mapItem(a, accCurrency)));
+        }
+        if (adsRes.data?.ads) {
+          setAds(adsRes.data.ads.map((ad: any) => mapItem(ad, accCurrency)));
         }
       } catch (err) {
         console.error("Erro FB Ads:", err);
       }
     } else {
       setCampaigns([]);
+      setAdsets([]);
+      setAds([]);
     }
 
     setLoading(false);
@@ -184,28 +192,33 @@ export default function Campaigns() {
     loadFacebookData();
   }, [loadFacebookData]);
 
-  // 2. Alternar Status (Pausar / Ativar Campanha)
-  const handleToggleStatus = async (item: CampaignItem) => {
+  // 2. Alternar Status (Pausar / Ativar Campanha, Conjunto ou Anúncio)
+  const handleToggleStatus = async (item: CampaignItem, type: "campaign" | "adset" | "ad" = "campaign") => {
     if (!current?.fb_ad_account_id) return;
     const nextStatus = item.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
     setUpdatingId(item.id);
 
+    const action = type === "ad" ? "set_ad_status" : type === "adset" ? "set_adset_status" : "set_campaign_status";
+    const body: any = { action, status: nextStatus };
+    if (type === "ad") body.ad_id = item.id;
+    else if (type === "adset") body.adset_id = item.id;
+    else body.campaign_id = item.id;
+
     try {
-      const { data, error } = await supabase.functions.invoke("fb-ads-control", {
-        body: {
-          action: "set_campaign_status",
-          campaign_id: item.id,
-          status: nextStatus,
-        },
-      });
+      const { data, error } = await supabase.functions.invoke("fb-ads-control", { body });
 
       if (error || (data as any)?.error) {
         toast({ title: "Erro ao alterar no Facebook", description: error?.message || (data as any)?.error, variant: "destructive" });
       } else {
-        toast({ title: `Campanha ${nextStatus === "ACTIVE" ? "ativada" : "pausada"} com sucesso!` });
-        setCampaigns((prev) =>
-          prev.map((c) => (c.id === item.id ? { ...c, status: nextStatus } : c))
-        );
+        const label = type === "ad" ? "Anúncio" : type === "adset" ? "Conjunto" : "Campanha";
+        toast({ title: `${label} ${nextStatus === "ACTIVE" ? "ativado" : "pausado"} com sucesso!` });
+        if (type === "campaign") {
+          setCampaigns((prev) => prev.map((c) => (c.id === item.id ? { ...c, status: nextStatus } : c)));
+        } else if (type === "adset") {
+          setAdsets((prev) => prev.map((a) => (a.id === item.id ? { ...a, status: nextStatus } : a)));
+        } else {
+          setAds((prev) => prev.map((ad) => (ad.id === item.id ? { ...ad, status: nextStatus } : ad)));
+        }
       }
     } catch (e: any) {
       toast({ title: "Falha na comunicação", description: e.message, variant: "destructive" });
@@ -224,21 +237,23 @@ export default function Campaigns() {
 
     setUpdatingId(selectedCampaign.id);
     try {
-      const { data, error } = await supabase.functions.invoke("fb-ads-control", {
-        body: {
-          action: "set_campaign_budget",
-          campaign_id: selectedCampaign.id,
-          daily_budget: budgetVal,
-        },
-      });
+      const isAdset = activeMetaTab === "conjuntos";
+      const action = isAdset ? "set_adset_budget" : "set_campaign_budget";
+      const body: any = { action, daily_budget: budgetVal };
+      if (isAdset) body.adset_id = selectedCampaign.id;
+      else body.campaign_id = selectedCampaign.id;
+
+      const { data, error } = await supabase.functions.invoke("fb-ads-control", { body });
 
       if (error || (data as any)?.error) {
         toast({ title: "Erro ao atualizar orçamento", description: error?.message, variant: "destructive" });
       } else {
         toast({ title: "Orçamento atualizado no Facebook!" });
-        setCampaigns((prev) =>
-          prev.map((c) => (c.id === selectedCampaign.id ? { ...c, daily_budget: budgetVal } : c))
-        );
+        if (isAdset) {
+          setAdsets((prev) => prev.map((a) => (a.id === selectedCampaign.id ? { ...a, daily_budget: budgetVal } : a)));
+        } else {
+          setCampaigns((prev) => prev.map((c) => (c.id === selectedCampaign.id ? { ...c, daily_budget: budgetVal } : c)));
+        }
         setBudgetModalOpen(false);
       }
     } catch (e: any) {
@@ -247,30 +262,37 @@ export default function Campaigns() {
     setUpdatingId(null);
   };
 
-  // Filtragem das Campanhas
-  const filteredCampaigns = useMemo(() => {
-    return campaigns.filter((c) => {
-      const matchesName = !searchName || c.name.toLowerCase().includes(searchName.toLowerCase());
+  // Obter itens da aba ativa
+  const currentItems = useMemo(() => {
+    const list = activeMetaTab === "anuncios" ? ads : activeMetaTab === "conjuntos" ? adsets : campaigns;
+    return list.filter((item) => {
+      const matchesName = !searchName || item.name.toLowerCase().includes(searchName.toLowerCase());
       const matchesStatus =
         statusFilter === "all" ||
-        (statusFilter === "active" && c.status === "ACTIVE") ||
-        (statusFilter === "paused" && c.status === "PAUSED");
+        (statusFilter === "active" && item.status === "ACTIVE") ||
+        (statusFilter === "paused" && item.status === "PAUSED");
       return matchesName && matchesStatus;
     });
-  }, [campaigns, searchName, statusFilter]);
+  }, [activeMetaTab, campaigns, adsets, ads, searchName, statusFilter]);
 
   // Totais
   const totals = useMemo(() => {
-    return filteredCampaigns.reduce(
+    return currentItems.reduce(
       (acc, c) => ({
         spend: acc.spend + c.spend,
         revenue: acc.revenue + c.revenue,
         profit: acc.profit + c.profit,
         purchases: acc.purchases + c.purchases,
+        checkouts: acc.checkouts + c.checkouts,
+        clicks: acc.clicks + c.clicks,
+        impressions: acc.impressions + c.impressions,
       }),
-      { spend: 0, revenue: 0, profit: 0, purchases: 0 }
+      { spend: 0, revenue: 0, profit: 0, purchases: 0, checkouts: 0, clicks: 0, impressions: 0 }
     );
-  }, [filteredCampaigns]);
+  }, [currentItems]);
+
+  const currentTabType = activeMetaTab === "anuncios" ? "ad" : activeMetaTab === "conjuntos" ? "adset" : "campaign";
+  const entityLabel = activeMetaTab === "anuncios" ? "Anúncio" : activeMetaTab === "conjuntos" ? "Conjunto de Anúncios" : "Campanha";
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -390,15 +412,17 @@ export default function Campaigns() {
       </div>
 
       {/* 3. Tabela Profissional com Switches Ativo/Pausado e Edição de Orçamento */}
-      {activeMetaTab === "campanhas" && (
+      {(activeMetaTab === "campanhas" || activeMetaTab === "conjuntos" || activeMetaTab === "anuncios") && (
         <Card className="glass-card border-border overflow-hidden">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader className="bg-muted/30">
                 <TableRow className="border-border text-xs uppercase font-mono">
                   <TableHead className="w-12 text-center">Status</TableHead>
-                  <TableHead className="min-w-[180px]">Campanha</TableHead>
-                  <TableHead className="text-right">Orçamento</TableHead>
+                  <TableHead className="min-w-[180px]">{entityLabel}</TableHead>
+                  {activeMetaTab !== "anuncios" && (
+                    <TableHead className="text-right">Orçamento</TableHead>
+                  )}
                   <TableHead className="text-right">Vendas</TableHead>
                   <TableHead className="text-right">CPA</TableHead>
                   <TableHead className="text-right">IC (Checkout)</TableHead>
@@ -417,19 +441,19 @@ export default function Campaigns() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={16} className="py-12 text-center text-xs text-muted-foreground">
+                    <TableCell colSpan={activeMetaTab === "anuncios" ? 15 : 16} className="py-12 text-center text-xs text-muted-foreground">
                       <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
-                      Carregando campanhas do Facebook Ads...
+                      Carregando {entityLabel.toLowerCase()}s do Facebook Ads...
                     </TableCell>
                   </TableRow>
-                ) : filteredCampaigns.length === 0 ? (
+                ) : currentItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={16} className="py-12 text-center text-xs text-muted-foreground">
-                      Nenhuma campanha encontrada no período selecionado ou conta não conectada.
+                    <TableCell colSpan={activeMetaTab === "anuncios" ? 15 : 16} className="py-12 text-center text-xs text-muted-foreground">
+                      Nenhum(a) {entityLabel.toLowerCase()} encontrado(a) no período selecionado ou conta não conectada.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredCampaigns.map((c) => {
+                  currentItems.map((c) => {
                     const isUpdating = updatingId === c.id;
                     const isRunning = c.status === "ACTIVE";
                     return (
@@ -441,33 +465,39 @@ export default function Campaigns() {
                           ) : (
                             <Switch
                               checked={isRunning}
-                              onCheckedChange={() => handleToggleStatus(c)}
+                              onCheckedChange={() => handleToggleStatus(c, currentTabType)}
                               title={isRunning ? "Clique para pausar" : "Clique para ativar"}
                             />
                           )}
                         </TableCell>
 
-                        {/* Nome da Campanha */}
+                        {/* Nome do Item */}
                         <TableCell className="font-semibold text-foreground">
                           <p className="truncate max-w-[220px]" title={c.name}>{c.name}</p>
                           <span className="text-[10px] text-muted-foreground font-mono">ID: {c.id}</span>
                         </TableCell>
 
-                        {/* Orçamento Diário Editável */}
-                        <TableCell className="text-right">
-                          <button
-                            onClick={() => {
-                              setSelectedCampaign(c);
-                              setNewBudget(String(c.daily_budget));
-                              setBudgetModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-1 font-mono font-medium hover:text-primary transition-colors p-1 rounded hover:bg-muted/20"
-                            title="Editar orçamento"
-                          >
-                            <span>{fmt(c.daily_budget)}/dia</span>
-                            <Edit2 className="h-3 w-3 opacity-60" />
-                          </button>
-                        </TableCell>
+                        {/* Orçamento Diário Editável (apenas para campanhas e conjuntos) */}
+                        {activeMetaTab !== "anuncios" && (
+                          <TableCell className="text-right">
+                            {c.daily_budget > 0 ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedCampaign(c);
+                                  setNewBudget(String(c.daily_budget));
+                                  setBudgetModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 font-mono font-medium hover:text-primary transition-colors p-1 rounded hover:bg-muted/20"
+                                title="Editar orçamento"
+                              >
+                                <span>{fmt(c.daily_budget)}/dia</span>
+                                <Edit2 className="h-3 w-3 opacity-60" />
+                              </button>
+                            ) : (
+                              <span className="text-muted-foreground font-mono text-[11px]">Nível Conjunto</span>
+                            )}
+                          </TableCell>
+                        )}
 
                         {/* Vendas */}
                         <TableCell className="text-right font-mono font-bold text-primary">

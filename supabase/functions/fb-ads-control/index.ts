@@ -115,15 +115,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ---- Read: adsets for a campaign ----
+    // ---- Read: adsets for a campaign or account ----
     if (action === "adsets") {
+      const accountId = normalizeAccount(String(body.ad_account_id || ""));
       const campaignId = String(body.campaign_id || "").replace(/[^0-9]/g, "");
-      if (!campaignId) return json({ error: "campaign_id required" }, 400);
+      const targetId = campaignId || (accountId ? `act_${accountId}` : "");
+      if (!targetId) return json({ error: "ad_account_id or campaign_id required" }, 400);
       const preset = /^[a-z0-9_]{2,30}$/.test(String(body.date_preset || "")) ? String(body.date_preset) : "last_7d";
 
-      const listUrl = `${GRAPH}/${campaignId}/adsets?fields=id,name,status,effective_status,daily_budget&limit=100&access_token=${token}`;
-      const insightsFields = "adset_id,adset_name,spend,impressions,clicks,ctr,actions,purchase_roas,action_values";
-      const insightsUrl = `${GRAPH}/${campaignId}/insights?fields=${insightsFields}&date_preset=${preset}&level=adset&limit=100&access_token=${token}`;
+      const listUrl = `${GRAPH}/${targetId}/adsets?fields=id,name,status,effective_status,daily_budget,campaign_id&limit=150&access_token=${token}`;
+      const insightsFields = "adset_id,adset_name,spend,impressions,clicks,cpc,cpm,ctr,actions,cost_per_action_type,purchase_roas,action_values";
+      const insightsUrl = `${GRAPH}/${targetId}/insights?fields=${insightsFields}&date_preset=${preset}&level=adset&limit=150&access_token=${token}`;
 
       const [listRes, insRes] = await Promise.all([fetch(listUrl), fetch(insightsUrl)]);
       const [list, ins] = await Promise.all([listRes.json(), insRes.json()]);
@@ -136,19 +138,35 @@ Deno.serve(async (req) => {
       const adsets = (list.data || []).map((a: any) => {
         const i = byId.get(a.id) || {};
         const purchases = Number(i.actions?.find((ac: any) => ac.action_type === "purchase")?.value || 0);
+        const checkouts = Number(
+          i.actions?.find((ac: any) => ac.action_type === "initiate_checkout" || ac.action_type === "omni_initiated_checkout")?.value || 0
+        );
+        const cpp = Number(i.cost_per_action_type?.find((ac: any) => ac.action_type === "purchase")?.value || 0);
+        const cpic = Number(
+          i.cost_per_action_type?.find((ac: any) => ac.action_type === "initiate_checkout" || ac.action_type === "omni_initiated_checkout")?.value || 0
+        );
         const roas = Number(i.purchase_roas?.[0]?.value || 0);
+        const revenue = Number(i.action_values?.find((ac: any) => ac.action_type === "purchase")?.value || 0);
         return {
+          id: a.id,
           adset_id: a.id,
-          adset_name: a.name,
+          name: a.name,
+          campaign_id: a.campaign_id,
           status: a.status,
           effective_status: a.effective_status,
           daily_budget: a.daily_budget ? Number(a.daily_budget) / 100 : null,
           spend: Number(i.spend || 0),
           impressions: Number(i.impressions || 0),
           clicks: Number(i.clicks || 0),
+          cpc: Number(i.cpc || 0),
+          cpm: Number(i.cpm || 0),
           ctr: Number(i.ctr || 0),
           purchases,
+          checkouts,
+          cost_per_purchase: cpp,
+          cost_per_checkout: cpic,
           roas,
+          revenue,
         };
       });
 
@@ -179,11 +197,19 @@ Deno.serve(async (req) => {
       const ads = (list.data || []).map((ad: any) => {
         const i = byId.get(ad.id) || {};
         const purchases = Number(i.actions?.find((a: any) => a.action_type === "purchase")?.value || 0);
+        const checkouts = Number(
+          i.actions?.find((a: any) => a.action_type === "initiate_checkout" || a.action_type === "omni_initiated_checkout")?.value || 0
+        );
         const cpp = Number(i.cost_per_action_type?.find((a: any) => a.action_type === "purchase")?.value || 0);
+        const cpic = Number(
+          i.cost_per_action_type?.find((a: any) => a.action_type === "initiate_checkout" || a.action_type === "omni_initiated_checkout")?.value || 0
+        );
         const roas = Number(i.purchase_roas?.[0]?.value || 0);
         const revenue = Number(i.action_values?.find((a: any) => a.action_type === "purchase")?.value || 0);
         return {
+          id: ad.id,
           ad_id: ad.id,
+          name: ad.name,
           ad_name: ad.name,
           campaign_id: ad.campaign_id,
           adset_id: ad.adset_id,
@@ -197,7 +223,9 @@ Deno.serve(async (req) => {
           cpm: Number(i.cpm || 0),
           ctr: Number(i.ctr || 0),
           purchases,
+          checkouts,
           cost_per_purchase: cpp,
+          cost_per_checkout: cpic,
           roas,
           revenue,
         };
