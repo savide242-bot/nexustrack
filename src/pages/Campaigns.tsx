@@ -158,6 +158,8 @@ export default function Campaigns() {
 
     // Buscar Campanhas, Conjuntos e Anúncios da Meta Marketing API
     if (accountId) {
+      const localToken = localStorage.getItem("nx_meta_direct_token");
+
       try {
         const [campRes, adsetRes, adsRes] = await Promise.all([
           supabase.functions.invoke("fb-ads-control", {
@@ -172,16 +174,35 @@ export default function Campaigns() {
         ]);
 
         const accCurrency = campRes.data?.account?.currency || "USD";
+        let fetchedCampaigns = campRes.data?.campaigns || [];
+        let fetchedAdsets = adsetRes.data?.adsets || [];
+        let fetchedAds = adsRes.data?.ads || [];
 
-        if (campRes.data?.campaigns) {
-          setCampaigns(campRes.data.campaigns.map((c: any) => mapItem(c, accCurrency)));
+        // Fallback 100% à prova de falhas: se a Edge Function falhou ou retornou vazio e temos o token direto
+        if (localToken && (fetchedAdsets.length === 0 || fetchedAds.length === 0)) {
+          try {
+            const presetParam = dateFilter || "today";
+            const [fbAdsetsRes, fbAdsRes] = await Promise.all([
+              fetch(`https://graph.facebook.com/v21.0/act_${accountId}/adsets?fields=id,name,status,effective_status,daily_budget,campaign_id&limit=150&access_token=${encodeURIComponent(localToken)}`),
+              fetch(`https://graph.facebook.com/v21.0/act_${accountId}/ads?fields=id,name,status,effective_status,campaign_id,adset_id&limit=150&access_token=${encodeURIComponent(localToken)}`),
+            ]);
+
+            const [fbAdsetsJson, fbAdsJson] = await Promise.all([fbAdsetsRes.json(), fbAdsRes.json()]);
+
+            if (fbAdsetsJson?.data && fetchedAdsets.length === 0) {
+              fetchedAdsets = fbAdsetsJson.data;
+            }
+            if (fbAdsJson?.data && fetchedAds.length === 0) {
+              fetchedAds = fbAdsJson.data;
+            }
+          } catch (directGraphErr) {
+            console.warn("Aviso ao consultar Graph direto:", directGraphErr);
+          }
         }
-        if (adsetRes.data?.adsets) {
-          setAdsets(adsetRes.data.adsets.map((a: any) => mapItem(a, accCurrency)));
-        }
-        if (adsRes.data?.ads) {
-          setAds(adsRes.data.ads.map((ad: any) => mapItem(ad, accCurrency)));
-        }
+
+        setCampaigns(fetchedCampaigns.map((c: any) => mapItem(c, accCurrency)));
+        setAdsets(fetchedAdsets.map((a: any) => mapItem(a, accCurrency)));
+        setAds(fetchedAds.map((ad: any) => mapItem(ad, accCurrency)));
       } catch (err) {
         console.error("Erro FB Ads:", err);
       }
