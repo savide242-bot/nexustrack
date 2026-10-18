@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboard } from "@/contexts/DashboardContext";
@@ -118,17 +118,19 @@ export default function Campaigns() {
           const list: CampaignItem[] = resData.campaigns.map((c: any) => {
             const spend = cv(c.spend || 0, resData.account?.currency || "USD");
             const purchases = c.purchases || 0;
-            const revenue = cv(c.revenue || purchases * 50, "USD");
+            // Usa o faturamento real reportado pelo Facebook ou o valor exato registrado
+            const realPlatformRevenue = Number(c.platform_revenue ?? c.revenue ?? 0);
+            const revenue = cv(realPlatformRevenue, resData.account?.currency || "USD");
             const profit = revenue - spend;
             const roas = spend > 0 ? revenue / spend : 0;
             const cpa = purchases > 0 ? spend / purchases : 0;
             const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
 
             return {
-              id: c.id,
-              name: c.name,
-              status: c.status,
-              daily_budget: cv((c.daily_budget || 0) / 100, resData.account?.currency || "USD"),
+              id: c.id || c.campaign_id,
+              name: c.name || c.campaign_name || `Campanha ${c.id || c.campaign_id}`,
+              status: c.status || "PAUSED",
+              daily_budget: cv((c.daily_budget || 0), resData.account?.currency || "USD"),
               spend,
               impressions: c.impressions || 0,
               clicks: c.clicks || 0,

@@ -60,7 +60,7 @@ export default function Index() {
     const fromIso = range.from.toISOString();
     const toIso = range.to.toISOString();
 
-    // 1. Carregar vendas da dashboard
+    // 1. Carregar vendas EXCLUSIVAS desta dashboard no período
     let salesQuery = supabase
       .from("sales")
       .select("*")
@@ -69,23 +69,28 @@ export default function Index() {
       .lte("sale_date", toIso);
 
     if (current?.id) {
-      salesQuery = salesQuery.or(`operation_id.eq.${current.id},operation_id.is.null`);
+      salesQuery = salesQuery.eq("operation_id", current.id);
     }
 
     const { data: salesData } = await salesQuery;
     setSales(salesData || []);
 
-    // 2. Carregar leads
-    const { count } = await supabase
+    // 2. Carregar leads exclusivos desta dashboard
+    let leadsQuery = supabase
       .from("leads_clicks")
       .select("id", { count: "exact", head: true })
       .gte("created_at", fromIso)
       .lte("created_at", toIso);
 
+    if (current?.id) {
+      leadsQuery = leadsQuery.eq("operation_id", current.id);
+    }
+
+    const { count } = await leadsQuery;
     setLeadsCount(count || 0);
 
     // 3. Se houver conta do Facebook Ads associada à Dashboard, carregar investimento real
-    if (current.fb_ad_account_id) {
+    if (current?.fb_ad_account_id) {
       try {
         const { data: fbData } = await supabase.functions.invoke("fb-ads-control", {
           body: { action: "campaigns", ad_account_id: current.fb_ad_account_id, date_preset: "last_7d" },
@@ -114,13 +119,24 @@ export default function Index() {
     loadData();
   }, [user, current, range]);
 
-  // Cálculos consolidados da Dashboard
+  // Cálculos consolidados da Dashboard com faturamento 100% REAL
   const metrics = useMemo(() => {
     const validSales = sales.filter((s) => s.status === "approved" || s.status === "realized");
-    const grossRevenue = validSales.reduce((sum, s) => sum + cv(Number(s.original_amount || 0), s.original_currency || "USD"), 0);
+    const grossRevenue = validSales.reduce((sum, s) => {
+      // Se a dashboard for em MZN e a venda já tiver amount_mzn, usa o valor líquido real gravado
+      if (current?.currency === "MZN" && Number(s.amount_mzn) > 0) {
+        return sum + Number(s.amount_mzn);
+      }
+      return sum + cv(Number(s.original_amount || 0), s.original_currency || "USD");
+    }, 0);
 
     const refundedSales = sales.filter((s) => s.status === "refunded");
-    const refundAmount = refundedSales.reduce((sum, s) => sum + cv(Number(s.original_amount || 0), s.original_currency || "USD"), 0);
+    const refundAmount = refundedSales.reduce((sum, s) => {
+      if (current?.currency === "MZN" && Number(s.amount_mzn) > 0) {
+        return sum + Number(s.amount_mzn);
+      }
+      return sum + cv(Number(s.original_amount || 0), s.original_currency || "USD");
+    }, 0);
 
     const netRevenue = grossRevenue - refundAmount;
     const spend = fbSpend;

@@ -63,20 +63,57 @@ export default function Integrations() {
     if (!user) return;
     setLoadingAccounts(true);
 
-    const { data: vaultData } = await supabase.functions.invoke("secrets-vault", {
-      body: { action: "preview", kind: "meta_access_token" },
-    });
+    const localToken = localStorage.getItem("nx_meta_direct_token");
 
-    if (vaultData?.exists) {
-      const { data: accountsData } = await supabase.functions.invoke("fb-list-accounts");
-      if (accountsData?.accounts) {
-        setFbAccounts(accountsData.accounts);
-        setProfileName(user.email ? user.email.split("@")[0] : "Perfil Conectado");
+    // 1. Tentar primeiro com o token salvo localmente
+    if (localToken) {
+      try {
+        const [meRes, accRes] = await Promise.all([
+          fetch(`https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(localToken)}`),
+          fetch(`https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_id,currency,account_status&limit=100&access_token=${encodeURIComponent(localToken)}`)
+        ]);
+
+        const [meData, accData] = await Promise.all([meRes.json(), accRes.json()]);
+
+        if (meData?.name) {
+          setProfileName(meData.name);
+          if (accData?.data && accData.data.length > 0) {
+            const list: FbAccount[] = accData.data.map((acc: any) => ({
+              id: acc.id.replace(/^act_/, ""),
+              name: acc.name || `Conta ${acc.account_id}`,
+              currency: acc.currency || "USD",
+              status: acc.account_status,
+            }));
+            setFbAccounts(list);
+            setLoadingAccounts(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Erro ao buscar contas via localToken:", err);
       }
-    } else {
-      setProfileName(null);
-      setFbAccounts([]);
     }
+
+    // 2. Se não houver localToken válido, verificar no Supabase Vault
+    try {
+      const { data: vaultData } = await supabase.functions.invoke("secrets-vault", {
+        body: { action: "preview", kind: "meta_access_token" },
+      });
+
+      if (vaultData?.exists) {
+        const { data: accountsData } = await supabase.functions.invoke("fb-list-accounts");
+        if (accountsData?.accounts) {
+          setFbAccounts(accountsData.accounts);
+          setProfileName(user.email ? user.email.split("@")[0] : "Perfil Conectado");
+        }
+      } else if (!localToken) {
+        setProfileName(null);
+        setFbAccounts([]);
+      }
+    } catch (vaultErr) {
+      console.warn("Erro ao checar vault:", vaultErr);
+    }
+
     setLoadingAccounts(false);
   };
 
