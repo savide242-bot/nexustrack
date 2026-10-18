@@ -83,27 +83,58 @@ Deno.serve(async (req) => {
       });
     }
 
-    const event = payload.event || payload.data?.event || "";
-    const purchase = payload.data?.purchase || payload.purchase || {};
-    const buyer = payload.data?.buyer || payload.buyer || {};
-    const product = payload.data?.product || payload.product || {};
+    // Suporte Universal a Gateways: Kiwify, PerfectPay, Hotmart e outros
+    const isKiwify = Boolean(payload.order_id && (payload.Customer || payload.customer));
+    const isPerfectPay = Boolean(payload.sale_amount && (payload.customer || payload.Customer));
 
-    const buyerEmail = buyer.email || "";
-    const buyerName = buyer.name || "";
-    const buyerPhone = buyer.checkout_phone || buyer.phone || "";
-    const originalAmount = purchase.price?.value || purchase.original_offer_price?.value || 0;
-    const originalCurrency = purchase.price?.currency_value || purchase.price?.currency_code || "USD";
-    const transactionId = purchase.transaction || "";
-    const productName = product.name || "";
-    const status = mapStatus(event, originalAmount);
+    let buyerEmail = buyer.email || "";
+    let buyerName = buyer.name || "";
+    let buyerPhone = buyer.checkout_phone || buyer.phone || "";
+    let originalAmount = purchase.price?.value || purchase.original_offer_price?.value || 0;
+    let originalCurrency = purchase.price?.currency_value || purchase.price?.currency_code || "USD";
+    let transactionId = purchase.transaction || "";
+    let productName = product.name || "";
+    let status = mapStatus(event, originalAmount);
+    let platform = "hotmart";
+
+    if (isKiwify) {
+      platform = "kiwify";
+      const c = payload.Customer || payload.customer || {};
+      buyerEmail = c.email || buyerEmail;
+      buyerName = c.full_name || c.name || buyerName;
+      buyerPhone = c.mobile || c.phone || buyerPhone;
+      transactionId = payload.order_id || transactionId;
+      productName = payload.Product?.product_name || payload.product?.name || productName;
+      const charge = Number(payload.Commissions?.charge_amount || payload.order_amount || 0);
+      originalAmount = charge > 1000 ? charge / 100 : (charge || originalAmount);
+      originalCurrency = payload.Commissions?.currency || "BRL";
+      const kStatus = String(payload.order_status || "").toLowerCase();
+      status = (kStatus === "paid" || kStatus === "approved") ? "approved" : kStatus === "refunded" ? "refunded" : "pending";
+    } else if (isPerfectPay) {
+      platform = "perfectpay";
+      const c = payload.customer || payload.Customer || {};
+      buyerEmail = c.email || buyerEmail;
+      buyerName = c.full_name || c.name || buyerName;
+      buyerPhone = c.phone || buyerPhone;
+      transactionId = payload.code || transactionId;
+      productName = payload.product?.name || productName;
+      originalAmount = Number(payload.sale_amount || originalAmount);
+      originalCurrency = payload.currency || "BRL";
+      const ppStatus = Number(payload.sale_status_enum);
+      status = ppStatus === 2 ? "approved" : ppStatus === 7 ? "refunded" : "pending";
+    }
+
     const saleDate = extractSaleDate(payload, purchase);
     const approvedAt = extractApprovedAt(payload, purchase, event);
     const nowIso = new Date().toISOString();
 
-    console.log("Hotmart webhook received", {
+    console.log("Webhook received", {
+      platform,
       event,
       transactionId,
       status,
+      originalAmount,
+      originalCurrency,
       hasHeaderHottok: Boolean(headerHottok),
       hasBodyHottok: Boolean(payload.hottok || payload.data?.hottok),
     });
@@ -123,18 +154,28 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Strict tenant match via vault: hottok value -> user_id
+    // Identificação do tenant: por hottok no Vault OU por ?dash=ID da dashboard
     const hottok = headerHottok || payload.hottok || payload.data?.hottok || "";
     let campaignId: string | null = null;
     let userId: string | null = null;
     let leadId: string | null = null;
-    let dashboardId: string | null = req.url.includes('dash=') ? new URL(req.url).searchParams.get('dash') : null;
+    let dashboardId: string | null = req.url.includes("dash=") ? new URL(req.url).searchParams.get("dash") : null;
 
     if (hottok) {
       const { data: secret } = await supabase
         .from("user_secrets").select("user_id")
         .eq("kind", "hotmart_token").eq("value", hottok).maybeSingle();
       if (secret) userId = (secret as any).user_id;
+    }
+
+    if (!userId && dashboardId) {
+      const { data: op } = await supabase.from("operations").select("user_id").eq("id", dashboardId).maybeSingle();
+      if (op?.user_id) {
+        userId = op.user_id;
+      } else {
+        const { data: dash } = await supabase.from("dashboards").select("user_id").eq("id", dashboardId).maybeSingle();
+        if (dash?.user_id) userId = dash.user_id;
+      }
     }
 
     // No user found â€” skip (multi-tenant isolation)

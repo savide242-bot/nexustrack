@@ -399,7 +399,7 @@ export default function Integrations() {
                         onClick={() => setDirectTokenModalOpen(true)}
                         className="h-8 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
                       >
-                        <Zap className="h-3.5 w-3.5" /> Alterar Token
+                        <Zap className="h-3.5 w-3.5" /> Atualizar Token
                       </Button>
                       <Button
                         variant="outline"
@@ -420,34 +420,96 @@ export default function Integrations() {
                     </div>
                   </div>
                 ) : (
-                  <div className="p-8 rounded-xl border border-dashed border-border/80 bg-card/40 text-center space-y-4">
-                    <div className="mx-auto w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center">
-                      <Facebook className="h-6 w-6 text-blue-400 fill-current" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-foreground">Conecte sua conta do Facebook</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5 max-w-sm mx-auto">
-                        Faça login na sua conta do Facebook para importar suas contas de anúncios e gerenciar suas campanhas em tempo real.
+                  <div className="space-y-4">
+                    {/* Opção A: Conexão Direta por Token (Sem depender da Meta liberar Pop-up) */}
+                    <div className="p-5 rounded-xl border border-primary/30 bg-primary/5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Zap className="h-5 w-5 text-primary" />
+                          <h4 className="text-sm font-bold text-foreground">Conexão Direta com Token (Recomendada)</h4>
+                        </div>
+                        <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px]">
+                          100% Funcional & Sem Bloqueios
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Cole seu Token de Acesso do Facebook para conectar instantaneamente suas contas de anúncio, ler campanhas e aplicar alterações de orçamento em tempo real.
                       </p>
+
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Input
+                          type="password"
+                          value={directTokenInput}
+                          onChange={(e) => setDirectTokenInput(e.target.value)}
+                          placeholder="Cole aqui seu token do Facebook (EAAB...)"
+                          className="font-mono text-xs bg-background/80"
+                        />
+                        <Button
+                          onClick={handleConnectDirectToken}
+                          disabled={validatingToken || !directTokenInput.trim()}
+                          className="gradient-primary text-primary-foreground font-semibold text-xs shrink-0 gap-1.5 h-9 px-5"
+                        >
+                          {validatingToken ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Conectando...
+                            </>
+                          ) : (
+                            <>
+                              <Check className="h-3.5 w-3.5" /> Conectar Token
+                            </>
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Passo a Passo Ilustrado em 1 Minuto */}
+                      <div className="rounded-lg border border-border/60 bg-background/50 p-3 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-foreground flex items-center gap-1.5 text-[11px]">
+                            <ShieldCheck className="h-3.5 w-3.5 text-primary" /> Como pegar seu Token no Facebook em 1 minuto:
+                          </span>
+                          <a
+                            href="https://developers.facebook.com/tools/explorer/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline text-[11px] font-semibold inline-flex items-center gap-1"
+                          >
+                            Abrir Graph Explorer <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-[11px] leading-relaxed">
+                          <li>Abra o <strong>Graph API Explorer</strong> no link acima.</li>
+                          <li>
+                            Em <strong>Permissões (Permissions)</strong>, adicione:{" "}
+                            <span className="font-mono text-primary font-bold">ads_read</span>,{" "}
+                            <span className="font-mono text-primary font-bold">ads_management</span> e{" "}
+                            <span className="font-mono text-primary font-bold">business_management</span>.
+                          </li>
+                          <li>Clique no botão azul <strong>Generate Access Token</strong> e aprove.</li>
+                          <li>Copie o token gerado e cole no campo acima!</li>
+                        </ol>
+                      </div>
                     </div>
 
-                    <div className="flex flex-col items-center justify-center gap-2 pt-1">
+                    {/* Opção B: Pop-up Tradicional */}
+                    <div className="p-4 rounded-xl border border-dashed border-border/80 bg-card/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                          <Facebook className="h-5 w-5 text-blue-400 fill-current" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">Conectar via Janela Pop-up</p>
+                          <p className="text-[11px] text-muted-foreground">Login oficial OAuth via tela modal da Meta.</p>
+                        </div>
+                      </div>
                       <Button
+                        variant="outline"
                         onClick={handleStartConnect}
                         disabled={connecting}
-                        className="gradient-primary text-primary-foreground text-sm gap-2.5 h-11 px-7 shadow-xl shadow-primary/20 font-semibold hover:scale-[1.02] transition-transform"
+                        className="text-xs gap-1.5 h-8 shrink-0 hover:bg-blue-600/10 hover:text-blue-400 hover:border-blue-500/30"
                       >
-                        {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4 fill-current" />}
-                        Conectar com Facebook
+                        {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Facebook className="h-3.5 w-3.5 fill-current" />}
+                        Abrir Pop-up
                       </Button>
-
-                      <button
-                        type="button"
-                        onClick={() => setDirectTokenModalOpen(true)}
-                        className="text-[11px] text-muted-foreground/70 hover:text-primary transition-colors underline flex items-center gap-1 mt-2"
-                      >
-                        <Zap className="h-3 w-3" /> Alternativa: Inserir Token de Acesso Manual
-                      </button>
                     </div>
                   </div>
                 )}
@@ -578,32 +640,118 @@ export default function Integrations() {
         </div>
       )}
 
-      {/* ABA 2: WEBHOOKS */}
+      {/* ABA 2: WEBHOOKS UNIVERSAIS (Hotmart, Kiwify, PerfectPay, Monetizze, Braip, Eduzz) */}
       {activeTab === "webhooks" && (
-        <Card className="glass-card border-border">
-          <CardHeader>
-            <CardTitle className="text-lg">Webhooks de Venda</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <p className="text-xs text-muted-foreground">
-              Cadastre esta URL na sua plataforma de checkout (Hotmart, Kiwify, PerfectPay, Eduzz) para receber vendas em tempo real nesta dashboard.
-            </p>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold">URL de Webhook da Dashboard:</Label>
-              <div className="flex gap-2">
-                <Input readOnly value={webhookUrl} className="font-mono text-xs bg-muted/20" />
-                <Button
-                  onClick={() => copyToClipboard(webhookUrl, "wh")}
-                  className="gradient-primary text-primary-foreground shrink-0 gap-1.5"
-                >
-                  {copiedText === "wh" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  Copiar Webhook
-                </Button>
+        <div className="space-y-6">
+          <Card className="glass-card border-border">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg font-bold flex items-center gap-2">
+                    <Radio className="h-5 w-5 text-primary" />
+                    Webhook Universal de Vendas
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Cole esta URL na sua plataforma de checkout. O NexusTrack processa automaticamente aprovações, recusas, cancelamentos e envia o evento de <strong>Purchase</strong> para a Meta CAPI com 10/10 de qualidade.
+                  </p>
+                </div>
+                <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">
+                  Dashboard: {current?.name || "Principal"}
+                </Badge>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-foreground">Sua URL de Webhook Exclusiva:</Label>
+                <div className="flex gap-2">
+                  <Input readOnly value={webhookUrl} className="font-mono text-xs bg-muted/20 border-primary/30 text-primary font-bold" />
+                  <Button
+                    onClick={() => copyToClipboard(webhookUrl, "wh")}
+                    className="gradient-primary text-primary-foreground shrink-0 gap-1.5 font-semibold text-xs"
+                  >
+                    {copiedText === "wh" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    Copiar Webhook
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  O parâmetro <code className="text-primary font-mono">?dash={current?.id || ""}</code> garante que a venda e o faturamento caiam exclusivamente nesta dashboard.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Instruções por Plataforma */}
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Kiwify */}
+            <Card className="glass-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Como cadastrar na Kiwify:
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground space-y-2 leading-relaxed">
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Acesse o painel da <strong>Kiwify</strong> &gt; <strong>Apps</strong> &gt; <strong>Webhooks</strong>.</li>
+                  <li>Clique em <strong>Criar Webhook</strong>.</li>
+                  <li>Insira o nome (ex: NexusTrack) e cole a <strong>URL de Webhook</strong> acima.</li>
+                  <li>Marque os eventos: <strong>Venda Aprovada</strong>, <strong>Boleto Gerado</strong>, <strong>Pix Gerado</strong>, <strong>Reembolso</strong>.</li>
+                  <li>Selecione seus produtos e clique em <strong>Salvar</strong>.</li>
+                </ol>
+              </CardContent>
+            </Card>
+
+            {/* Hotmart */}
+            <Card className="glass-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-orange-500" /> Como cadastrar na Hotmart:
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground space-y-2 leading-relaxed">
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>No menu da <strong>Hotmart</strong>, vá em <strong>Ferramentas</strong> &gt; <strong>Webhooks (API)</strong>.</li>
+                  <li>Clique em <strong>Cadastrar Webhook</strong>.</li>
+                  <li>Cole a <strong>URL de Webhook</strong> acima.</li>
+                  <li>Em eventos, marque <strong>Compra Aprovada</strong> e <strong>Cancelamento/Reembolso</strong>.</li>
+                  <li>Clique em <strong>Salvar</strong>. Pronto!</li>
+                </ol>
+              </CardContent>
+            </Card>
+
+            {/* PerfectPay */}
+            <Card className="glass-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-blue-500" /> Como cadastrar na PerfectPay:
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground space-y-2 leading-relaxed">
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Acesse <strong>Ferramentas</strong> &gt; <strong>Postback / Webhooks</strong> na PerfectPay.</li>
+                  <li>Clique em <strong>Adicionar Postback</strong>.</li>
+                  <li>Cole a URL acima e selecione o tipo de envio <strong>JSON</strong>.</li>
+                  <li>Selecione todos os produtos e clique em <strong>Salvar</strong>.</li>
+                </ol>
+              </CardContent>
+            </Card>
+
+            {/* Monetizze / Eduzz / Outras */}
+            <Card className="glass-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-purple-500" /> Monetizze, Braip & Eduzz:
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground space-y-2 leading-relaxed">
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Vá até as configurações de <strong>Postback / Notificações</strong> do seu produto.</li>
+                  <li>Cole a <strong>URL de Webhook</strong> com seu parâmetro <code>?dash=...</code>.</li>
+                  <li>O NexusTrack detecta automaticamente os campos de comprador, valor, status e UTMs.</li>
+                </ol>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       )}
 
       {/* ABA 3: UTMS */}

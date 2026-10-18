@@ -29,7 +29,7 @@ export default function Sales() {
       const dateColumn = dateMode === "approved_at" ? "approved_at" : "sale_date";
       let query = (supabase
         .from("sales")
-        .select("*, leads_clicks(country, city, utm_source)") as any)
+        .select("*, leads_clicks(country, city, utm_source, utm_campaign, utm_content, utm_term)") as any)
         .gte(dateColumn, from)
         .lte(dateColumn, to);
 
@@ -59,8 +59,17 @@ export default function Sales() {
   const platforms = Array.from(new Set(sales.map((s) => s.platform).filter(Boolean))).sort();
   const visibleSales = sales.filter((s) => {
     const q = search.trim().toLowerCase();
-    const matchesSearch = !q || [s.buyer_name, s.buyer_email, s.product_name, s.transaction_id]
-      .some((value) => String(value || "").toLowerCase().includes(q));
+    const lead = s.leads_clicks;
+    const matchesSearch = !q || [
+      s.buyer_name,
+      s.buyer_email,
+      s.product_name,
+      s.transaction_id,
+      lead?.utm_source,
+      lead?.utm_campaign,
+      lead?.utm_content,
+      lead?.utm_term
+    ].some((value) => String(value || "").toLowerCase().includes(q));
     const matchesStatus = statusFilter === "all" || s.status === statusFilter;
     const matchesPlatform = platformFilter === "all" || s.platform === platformFilter;
     return matchesSearch && matchesStatus && matchesPlatform;
@@ -80,44 +89,87 @@ export default function Sales() {
       </Card>
     ) : (
       <Card className="glass-card border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border hover:bg-transparent">
-              <TableHead>Comprador</TableHead>
-              <TableHead>Produto</TableHead>
-              <TableHead>Original</TableHead>
-              <TableHead>MZN</TableHead>
-              <TableHead>País</TableHead>
-              <TableHead>Fonte</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Venda em</TableHead>
-              <TableHead>Aprovada em</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.map((s) => {
-              const lead = s.leads_clicks;
-              return (
-                <TableRow key={s.id} className="border-border">
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{s.buyer_name || "—"}</p>
-                      <p className="text-xs text-muted-foreground">{s.buyer_email || ""}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{s.product_name || "—"}</TableCell>
-                  <TableCell className="font-mono text-sm">{s.original_amount} {s.original_currency}</TableCell>
-                  <TableCell className="font-mono text-sm font-bold text-primary">{Number(s.amount_mzn)?.toLocaleString("pt-MZ")} MT</TableCell>
-                  <TableCell className="text-sm">{lead?.country || "—"}</TableCell>
-                  <TableCell className="text-sm">{lead?.utm_source || "—"}</TableCell>
-                  <TableCell><Badge className={statusColor(s.status)}>{s.status}</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{new Date(s.sale_date || s.created_at).toLocaleDateString("pt-MZ")}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{s.approved_at ? new Date(s.approved_at).toLocaleDateString("pt-MZ") : "—"}</TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead>Comprador</TableHead>
+                <TableHead>Produto</TableHead>
+                <TableHead>Valor Original</TableHead>
+                <TableHead>MZN Líquido</TableHead>
+                <TableHead>Criativo / Anúncio</TableHead>
+                <TableHead>Campanha</TableHead>
+                <TableHead>Origem</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Data</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.map((s) => {
+                const lead = s.leads_clicks;
+                return (
+                  <TableRow key={s.id} className="border-border hover:bg-muted/10 transition-colors">
+                    <TableCell>
+                      <div>
+                        <p className="font-semibold text-foreground text-sm">{s.buyer_name || "—"}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono">{s.buyer_email || ""}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs font-medium max-w-[150px] truncate" title={s.product_name}>
+                      {s.product_name || "—"}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{s.original_amount} {s.original_currency}</TableCell>
+                    <TableCell className="font-mono text-xs font-bold text-primary">
+                      {Number(s.amount_mzn)?.toLocaleString("pt-MZ")} MT
+                    </TableCell>
+                    <TableCell>
+                      <div className="max-w-[180px]">
+                        <p className="font-mono text-xs font-semibold text-foreground truncate" title={lead?.utm_content || "Sem criativo"}>
+                          {lead?.utm_content ? `🎯 ${lead.utm_content}` : <span className="text-muted-foreground">—</span>}
+                        </p>
+                        {lead?.utm_term && (
+                          <p className="text-[10px] text-muted-foreground font-mono truncate" title={lead.utm_term}>
+                            cj: {lead.utm_term}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="max-w-[160px]">
+                        <p className="font-mono text-xs text-foreground truncate" title={lead?.utm_campaign || "Orgânico"}>
+                          {lead?.utm_campaign ? `📢 ${lead.utm_campaign}` : <span className="text-muted-foreground">—</span>}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-medium text-[11px] uppercase bg-muted/30 px-1.5 py-0.5 rounded border border-border/50">
+                          {lead?.utm_source || s.platform || "direct"}
+                        </span>
+                        {lead?.country && (
+                          <span className="text-[10px] text-muted-foreground">({lead.country})</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`${statusColor(s.status)} text-[11px]`}>
+                        {s.status === "approved" ? "Aprovada" : s.status === "realized" ? "Realizada" : s.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(s.approved_at || s.sale_date || s.created_at).toLocaleDateString("pt-MZ", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit"
+                      })}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
       </Card>
     )
   );
