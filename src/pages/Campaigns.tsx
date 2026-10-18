@@ -106,13 +106,18 @@ export default function Campaigns() {
     const costPerCheckout = cv(raw.cost_per_checkout || (checkouts > 0 ? spend / checkouts : 0), accCurrency || "USD");
     const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
 
+    const rawBudget = Number(raw.daily_budget || 0);
+    // Na Graph API da Meta, valores de orçamento vêm em centavos (ex: 50000 = 500.00).
+    // Se o valor já foi dividido pelo backend (< 100000 com decimal) ou se veio em centavos (> 10000), normaliza:
+    const normalizedBudget = rawBudget > 1000 ? rawBudget / 100 : rawBudget;
+
     return {
       id: raw.id || raw.ad_id || raw.adset_id || raw.campaign_id,
       name: raw.name || raw.ad_name || raw.adset_name || raw.campaign_name || "Sem nome",
       campaign_id: raw.campaign_id,
       adset_id: raw.adset_id,
       status: raw.status || "PAUSED",
-      daily_budget: cv((raw.daily_budget || 0), accCurrency || "USD"),
+      daily_budget: cv(normalizedBudget, accCurrency || "USD"),
       spend,
       impressions,
       clicks,
