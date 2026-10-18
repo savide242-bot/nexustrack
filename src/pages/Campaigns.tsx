@@ -37,6 +37,8 @@ const COUNTRY_NAMES: Record<string, string> = {
 interface CampaignItem {
   id: string;
   name: string;
+  campaign_id?: string;
+  adset_id?: string;
   status: "ACTIVE" | "PAUSED" | string;
   daily_budget: number;
   spend: number;
@@ -68,10 +70,12 @@ export default function Campaigns() {
   const [adsets, setAdsets] = useState<CampaignItem[]>([]);
   const [ads, setAds] = useState<CampaignItem[]>([]);
 
-  // Filtros idênticos à Foto 2 da UTMify
+  // Filtros de Campanha Ativa e Data padrão HOJE
+  const [selectedParentCampaignId, setSelectedParentCampaignId] = useState<string>("all");
+  const [selectedParentAdsetId, setSelectedParentAdsetId] = useState<string>("all");
   const [searchName, setSearchName] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("last_7d");
+  const [dateFilter, setDateFilter] = useState("today");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // Modal de edição de orçamento
@@ -105,6 +109,8 @@ export default function Campaigns() {
     return {
       id: raw.id || raw.ad_id || raw.adset_id || raw.campaign_id,
       name: raw.name || raw.ad_name || raw.adset_name || raw.campaign_name || "Sem nome",
+      campaign_id: raw.campaign_id,
+      adset_id: raw.adset_id,
       status: raw.status || "PAUSED",
       daily_budget: cv((raw.daily_budget || 0), accCurrency || "USD"),
       spend,
@@ -262,9 +268,26 @@ export default function Campaigns() {
     setUpdatingId(null);
   };
 
-  // Obter itens da aba ativa
+  // Obter itens da aba ativa respeitando a hierarquia da campanha/conjunto selecionado
   const currentItems = useMemo(() => {
-    const list = activeMetaTab === "anuncios" ? ads : activeMetaTab === "conjuntos" ? adsets : campaigns;
+    let list: CampaignItem[] = [];
+    if (activeMetaTab === "anuncios") {
+      list = ads;
+      if (selectedParentAdsetId !== "all") {
+        list = list.filter((ad) => ad.adset_id === selectedParentAdsetId);
+      }
+      if (selectedParentCampaignId !== "all") {
+        list = list.filter((ad) => ad.campaign_id === selectedParentCampaignId);
+      }
+    } else if (activeMetaTab === "conjuntos") {
+      list = adsets;
+      if (selectedParentCampaignId !== "all") {
+        list = list.filter((a) => a.campaign_id === selectedParentCampaignId);
+      }
+    } else {
+      list = campaigns;
+    }
+
     return list.filter((item) => {
       const matchesName = !searchName || item.name.toLowerCase().includes(searchName.toLowerCase());
       const matchesStatus =
@@ -273,9 +296,9 @@ export default function Campaigns() {
         (statusFilter === "paused" && item.status === "PAUSED");
       return matchesName && matchesStatus;
     });
-  }, [activeMetaTab, campaigns, adsets, ads, searchName, statusFilter]);
+  }, [activeMetaTab, campaigns, adsets, ads, searchName, statusFilter, selectedParentCampaignId, selectedParentAdsetId]);
 
-  // Totais
+  // Totais consolidados da visualização ativa
   const totals = useMemo(() => {
     return currentItems.reduce(
       (acc, c) => ({
@@ -294,103 +317,155 @@ export default function Campaigns() {
   const currentTabType = activeMetaTab === "anuncios" ? "ad" : activeMetaTab === "conjuntos" ? "adset" : "campaign";
   const entityLabel = activeMetaTab === "anuncios" ? "Anúncio" : activeMetaTab === "conjuntos" ? "Conjunto de Anúncios" : "Campanha";
 
+  // Obter nome da campanha pai selecionada
+  const activeParentCampaign = campaigns.find((c) => c.id === selectedParentCampaignId);
+  const activeParentAdset = adsets.find((a) => a.id === selectedParentAdsetId);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* 1. Header com Abas Superiores Idênticas à Foto 2 da UTMify */}
-      <div className="flex flex-wrap items-center justify-between border-b border-border/60 pb-2 gap-4">
+      {/* 1. Header Estilizado NexusTrack com Abas Fluidas */}
+      <div className="flex flex-wrap items-center justify-between border-b border-border/80 pb-3 gap-4">
         {/* Abas: Contas, Campanhas, Conjuntos, Anúncios */}
-        <div className="flex items-center gap-1 overflow-x-auto">
+        <div className="flex items-center gap-1.5 p-1 bg-card/60 border border-border/80 rounded-xl backdrop-blur-md overflow-x-auto">
           <button
             onClick={() => setActiveMetaTab("contas")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeMetaTab === "contas"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
             }`}
           >
-            <FolderKanban className="h-4 w-4" /> Contas
+            <FolderKanban className="h-3.5 w-3.5" /> Contas
           </button>
           <button
-            onClick={() => setActiveMetaTab("campanhas")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            onClick={() => {
+              setActiveMetaTab("campanhas");
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeMetaTab === "campanhas"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
             }`}
           >
-            <Megaphone className="h-4 w-4" /> Campanhas
+            <Megaphone className="h-3.5 w-3.5" /> Campanhas ({campaigns.length})
           </button>
           <button
             onClick={() => setActiveMetaTab("conjuntos")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeMetaTab === "conjuntos"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
             }`}
           >
-            <Layers className="h-4 w-4" /> Conjuntos
+            <Layers className="h-3.5 w-3.5" /> Conjuntos ({adsets.length})
           </button>
           <button
             onClick={() => setActiveMetaTab("anuncios")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeMetaTab === "anuncios"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
             }`}
           >
-            <Image className="h-4 w-4" /> Anúncios
+            <Image className="h-3.5 w-3.5" /> Anúncios ({ads.length})
           </button>
         </div>
 
         {/* Lado Direito: Status + Atualizar */}
         <div className="flex items-center gap-3">
-          <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs gap-1 hidden sm:flex">
-            <CheckCircle2 className="h-3 w-3" /> Todas as vendas trackeadas
+          <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs gap-1.5 px-3 py-1 hidden sm:flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Meta Marketing API Conectada
           </Badge>
-          <span className="text-xs text-muted-foreground font-mono hidden md:inline">Atualizado agora mesmo</span>
           <Button
             onClick={loadFacebookData}
             disabled={loading}
-            className="gradient-primary text-primary-foreground text-xs gap-1.5 h-8 px-4 font-semibold shadow-md shadow-primary/20"
+            className="gradient-primary text-primary-foreground text-xs gap-1.5 h-9 px-4 font-semibold shadow-md shadow-primary/20 hover:scale-[1.02] transition-transform"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Atualizar
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Atualizar Métricas
           </Button>
         </div>
       </div>
 
-      {/* 2. Barra de Filtros Idêntica à Foto 2 da UTMify */}
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 bg-card/40 p-3.5 rounded-xl border border-border">
-        {/* Nome da Campanha */}
-        <div className="space-y-1">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Nome da Campanha</span>
+      {/* Breadcrumb de Navegação Hierárquica */}
+      {(selectedParentCampaignId !== "all" || selectedParentAdsetId !== "all") && (
+        <div className="flex items-center gap-2 text-xs bg-primary/10 border border-primary/20 px-3.5 py-2 rounded-xl text-primary font-mono">
+          <span>Filtrando por:</span>
+          {activeParentCampaign && (
+            <Badge variant="outline" className="border-primary/40 text-primary gap-1">
+              Campanha: {activeParentCampaign.name}
+              <button onClick={() => setSelectedParentCampaignId("all")} className="ml-1 hover:text-destructive">×</button>
+            </Badge>
+          )}
+          {activeParentAdset && (
+            <Badge variant="outline" className="border-primary/40 text-primary gap-1">
+              Conjunto: {activeParentAdset.name}
+              <button onClick={() => setSelectedParentAdsetId("all")} className="ml-1 hover:text-destructive">×</button>
+            </Badge>
+          )}
+          <button
+            onClick={() => {
+              setSelectedParentCampaignId("all");
+              setSelectedParentAdsetId("all");
+            }}
+            className="text-[11px] underline ml-auto text-primary/80 hover:text-primary"
+          >
+            Limpar Filtro de Hierarquia
+          </button>
+        </div>
+      )}
+
+      {/* 2. Barra de Filtros Futurista NexusTrack */}
+      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5 bg-card/60 backdrop-blur-md p-4 rounded-2xl border border-border/80 shadow-sm">
+        {/* Filtro por Campanha Pai (para Conjuntos e Anúncios) */}
+        {activeMetaTab !== "campanhas" && (
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Campanha Pai</span>
+            <Select value={selectedParentCampaignId} onValueChange={setSelectedParentCampaignId}>
+              <SelectTrigger className="h-9 text-xs bg-background/50 border-border">
+                <SelectValue placeholder="Todas as campanhas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as Campanhas</SelectItem>
+                {campaigns.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Nome do Item */}
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Buscar {entityLabel}</span>
           <Input
             value={searchName}
             onChange={(e) => setSearchName(e.target.value)}
-            placeholder="Filtrar por nome"
-            className="h-9 text-xs bg-muted/20 border-border"
+            placeholder={`Filtrar por nome...`}
+            className="h-9 text-xs bg-background/50 border-border"
           />
         </div>
 
-        {/* Status da Campanha */}
-        <div className="space-y-1">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Status da Campanha</span>
+        {/* Status */}
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Status</span>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 text-xs bg-muted/20 border-border">
+            <SelectTrigger className="h-9 text-xs bg-background/50 border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Qualquer</SelectItem>
-              <SelectItem value="active">Ativa</SelectItem>
-              <SelectItem value="paused">Pausada</SelectItem>
+              <SelectItem value="all">Qualquer Status</SelectItem>
+              <SelectItem value="active">Somente Ativos</SelectItem>
+              <SelectItem value="paused">Somente Pausados</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Período de Visualização */}
-        <div className="space-y-1">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Período de Visualização</span>
+        {/* Período (Predefinido como HOJE) */}
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Data (Padrão: Hoje)</span>
           <Select value={dateFilter} onValueChange={setDateFilter}>
-            <SelectTrigger className="h-9 text-xs bg-muted/20 border-border">
+            <SelectTrigger className="h-9 text-xs bg-background/50 border-border font-medium">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -398,15 +473,17 @@ export default function Campaigns() {
               <SelectItem value="yesterday">Ontem</SelectItem>
               <SelectItem value="last_7d">Últimos 7 dias</SelectItem>
               <SelectItem value="last_30d">Últimos 30 dias</SelectItem>
+              <SelectItem value="this_month">Este Mês</SelectItem>
+              <SelectItem value="maximum">Todo o Período</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Conta de Anúncio */}
-        <div className="space-y-1">
+        {/* Conta de Anúncio Conectada */}
+        <div className="space-y-1.5">
           <span className="text-[11px] font-semibold text-muted-foreground uppercase font-mono">Conta de Anúncio</span>
-          <div className="h-9 px-3 rounded-md border border-border bg-muted/20 flex items-center justify-between text-xs font-mono truncate">
-            <span className="truncate">{current?.fb_ad_account_id ? `act_${current.fb_ad_account_id}` : "Todas"}</span>
+          <div className="h-9 px-3 rounded-md border border-border bg-background/50 flex items-center justify-between text-xs font-mono text-primary truncate">
+            <span className="truncate">{current?.fb_ad_account_id ? `act_${current.fb_ad_account_id}` : "Nenhuma"}</span>
           </div>
         </div>
       </div>
@@ -471,10 +548,38 @@ export default function Campaigns() {
                           )}
                         </TableCell>
 
-                        {/* Nome do Item */}
+                        {/* Nome do Item com Link para Filtrar os Filhos */}
                         <TableCell className="font-semibold text-foreground">
-                          <p className="truncate max-w-[220px]" title={c.name}>{c.name}</p>
-                          <span className="text-[10px] text-muted-foreground font-mono">ID: {c.id}</span>
+                          <div className="flex flex-col">
+                            {activeMetaTab === "campanhas" ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedParentCampaignId(c.id);
+                                  setActiveMetaTab("conjuntos");
+                                }}
+                                className="text-left font-semibold text-foreground hover:text-primary hover:underline transition-colors flex items-center gap-1.5 group"
+                                title="Ver conjuntos desta campanha"
+                              >
+                                <span className="truncate max-w-[210px]">{c.name}</span>
+                                <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
+                              </button>
+                            ) : activeMetaTab === "conjuntos" ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedParentAdsetId(c.id);
+                                  setActiveMetaTab("anuncios");
+                                }}
+                                className="text-left font-semibold text-foreground hover:text-primary hover:underline transition-colors flex items-center gap-1.5 group"
+                                title="Ver anúncios deste conjunto"
+                              >
+                                <span className="truncate max-w-[210px]">{c.name}</span>
+                                <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
+                              </button>
+                            ) : (
+                              <p className="truncate max-w-[210px]" title={c.name}>{c.name}</p>
+                            )}
+                            <span className="text-[10px] text-muted-foreground font-mono">ID: {c.id}</span>
+                          </div>
                         </TableCell>
 
                         {/* Orçamento Diário Editável (apenas para campanhas e conjuntos) */}
