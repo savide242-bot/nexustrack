@@ -176,36 +176,68 @@ export default function Integrations() {
 
     setValidatingToken(true);
     try {
-      // 1. Validar token no Facebook Graph API diretamente
+      // 1. Validar token no Facebook Graph API diretamente pelo navegador (100% à prova de falha de Edge Function)
       const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(token)}`);
       const meData = await meRes.json();
       if (meData.error) {
         throw new Error(meData.error.message || "Token inválido ou expirado.");
       }
 
-      // 2. Salvar no secrets-vault
-      const { error: vaultErr } = await supabase.functions.invoke("secrets-vault", {
-        body: { action: "set", kind: "meta_access_token", value: token },
-      });
-      if (vaultErr) throw vaultErr;
+      const userName = meData.name || "Facebook Conectado";
+      setProfileName(userName);
 
-      setProfileName(meData.name || "Facebook Conectado");
+      // 2. Buscar contas de anúncios diretamente via Graph API
+      let accounts: FbAccount[] = [];
+      try {
+        const accRes = await fetch(
+          `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_id,currency,account_status&limit=100&access_token=${encodeURIComponent(token)}`
+        );
+        const accJson = await accRes.json();
+        if (accJson?.data) {
+          accounts = accJson.data.map((acc: any) => ({
+            id: acc.id.replace(/^act_/, ""),
+            name: acc.name || `Conta ${acc.account_id}`,
+            currency: acc.currency || "USD",
+            status: acc.account_status,
+          }));
+        }
+      } catch (graphErr) {
+        console.warn("Falha ao buscar contas via browser direto, tentando backend...", graphErr);
+      }
 
-      // 3. Buscar contas de anúncios
-      const { data: accData, error: accErr } = await supabase.functions.invoke("fb-list-accounts");
-      if (accErr) throw accErr;
+      // Salva token em cache local para garantir continuidade na sessão
+      localStorage.setItem("nx_meta_direct_token", token);
 
-      if (accData?.accounts && accData.accounts.length > 0) {
-        setFbAccounts(accData.accounts);
+      // 3. Persistir no secrets-vault em segundo plano (se falhar, não trava a conexão)
+      try {
+        await supabase.functions.invoke("secrets-vault", {
+          body: { action: "set", kind: "meta_access_token", value: token },
+        });
+      } catch (vaultErr) {
+        console.warn("Aviso ao persistir no vault:", vaultErr);
+      }
+
+      if (accounts.length > 0) {
+        setFbAccounts(accounts);
         toast({
           title: "Facebook Conectado com Sucesso!",
-          description: `${accData.accounts.length} conta(s) de anúncio encontrada(s). Selecione a conta para vincular a esta dashboard.`,
+          description: `${accounts.length} conta(s) de anúncio encontrada(s). Selecione a sua conta abaixo.`,
         });
       } else {
-        toast({
-          title: "Perfil Autenticado!",
-          description: "Conexão estabelecida com sucesso. Nenhuma conta de anúncios foi retornada para este usuário.",
-        });
+        // Tentar buscar via edge function caso a API direta não tenha retornado
+        const { data: edgeData } = await supabase.functions.invoke("fb-list-accounts");
+        if (edgeData?.accounts && edgeData.accounts.length > 0) {
+          setFbAccounts(edgeData.accounts);
+          toast({
+            title: "Facebook Conectado com Sucesso!",
+            description: `${edgeData.accounts.length} conta(s) de anúncio carregada(s).`,
+          });
+        } else {
+          toast({
+            title: `Conectado como ${userName}!`,
+            description: "Perfil autenticado com sucesso.",
+          });
+        }
       }
 
       setDirectTokenModalOpen(false);
