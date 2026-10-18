@@ -303,9 +303,10 @@ export function PixelManager() {
 
   const generateSnippet = (p: PixelConfig) => {
     const host = typeof window !== "undefined" ? window.location.origin : "https://nexustrack.lovable.app";
+    const primaryId = p.meta_pixel_ids[0] || "";
     const metaIds = p.meta_pixel_ids.join(",");
     const texts = encodeURIComponent(p.initiate_checkout_texts.join("|"));
-    return `<script src="${host}/nexustrack.js" data-pixel-id="${p.id}" data-meta-pixels="${metaIds}" data-checkout-texts="${texts}" data-auto-keywords="${p.initiate_checkout_auto_keywords}" async defer></script>`;
+    return `<script src="${host}/nexustrack.js?pixel=${primaryId}" data-meta-pixels="${metaIds}" data-pixel-id="${p.id}" data-checkout-texts="${texts}" data-auto-keywords="${p.initiate_checkout_auto_keywords}" async defer></script>`;
   };
 
   const copySnippet = (p: PixelConfig) => {
@@ -545,9 +546,23 @@ export function PixelManager() {
               <div className="flex gap-2">
                 <Input
                   readOnly
-                  value={`<script src="${typeof window !== "undefined" ? window.location.origin : "https://nexustrack.lovable.app"}/nexustrack.js" data-pixel-id="${editingPixel?.id || "nx_px_..."}" async defer></script>`}
+                  value={`<script src="${typeof window !== "undefined" ? window.location.origin : "https://nexustrack.lovable.app"}/nexustrack.js?pixel=${metaPixelList[0] || "ID_DO_SEU_PIXEL"}" data-meta-pixels="${metaPixelList.join(",") || "ID_DO_SEU_PIXEL"}" async defer></script>`}
                   className="font-mono text-[11px] bg-background/60 text-emerald-400 select-all"
                 />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const host = typeof window !== "undefined" ? window.location.origin : "https://nexustrack.lovable.app";
+                    const code = `<script src="${host}/nexustrack.js?pixel=${metaPixelList[0] || "ID_DO_SEU_PIXEL"}" data-meta-pixels="${metaPixelList.join(",") || "ID_DO_SEU_PIXEL"}" async defer></script>`;
+                    navigator.clipboard.writeText(code);
+                    toast({ title: "Script copiado!", description: "Cole antes do fechamento do </head> no seu site." });
+                  }}
+                  className="shrink-0 text-xs border-primary/30 text-primary gap-1"
+                >
+                  <Copy className="h-3.5 w-3.5" /> Copiar
+                </Button>
               </div>
             </div>
 
@@ -610,9 +625,14 @@ export function PixelManager() {
                 </div>
 
                 {/* Token de API de Conversões (CAPI) */}
-                <div className="space-y-1.5 pt-2">
+                <div className="space-y-2 pt-2 border-t border-border/40">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold">Token de Acesso da API de Conversões (CAPI)</Label>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs font-semibold text-foreground">Token de Acesso da API de Conversões (CAPI)</Label>
+                      <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] py-0 px-1.5 font-normal">
+                        Obrigatório para CAPI
+                      </Badge>
+                    </div>
                     <a
                       href="https://developers.facebook.com/docs/marketing-api/conversions-api/get-started"
                       target="_blank"
@@ -626,11 +646,11 @@ export function PixelManager() {
                     type="password"
                     value={metaAccessToken}
                     onChange={(e) => setMetaAccessToken(e.target.value)}
-                    placeholder="EAA... (Token gerado no Gerenciador de Eventos da Meta)"
-                    className="font-mono text-xs"
+                    placeholder="EAAB... (Gerado no Gerenciador de Eventos > Configurações > Gerar Token)"
+                    className="font-mono text-xs bg-background/70"
                   />
-                  <p className="text-[10px] text-muted-foreground">
-                    O token permite que o NexusTrack envie eventos de Purchase pelo servidor sem bloqueios de adblock.
+                  <p className="text-[10px] text-emerald-400/90 leading-tight">
+                    ⚡ <strong>Importante:</strong> Com este token, o NexusTrack envia as compras aprovadas diretamente do servidor para a Meta com e-mail, telefone e nome do comprador, alimentando o Pixel e otimizando o seu ROAS sem depender do navegador.
                   </p>
                 </div>
 
