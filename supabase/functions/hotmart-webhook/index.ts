@@ -1,4 +1,4 @@
-﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -317,8 +317,11 @@ Deno.serve(async (req) => {
                 name: buyerName,
                 value: originalAmount,
                 currency: originalCurrency,
+                order_id: finalTransactionId,
+                status: status,
+                is_approved: status === "realized" || status === "approved",
                 product_name: productName || "",
-                country: matchedLead?.country || "",
+                country: matchedLead?.country || "mz",
                 city: matchedLead?.city || "",
                 state: matchedLead?.state || "",
                 zip_code: matchedLead?.zip_code || "",

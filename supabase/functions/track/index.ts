@@ -1,4 +1,4 @@
-﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -98,8 +98,13 @@ Deno.serve(async (req) => {
     // Identificar user_id a partir do dashboard se fornecido
     let userId: string | null = null;
     if (dashboard_id) {
-      const { data: dash } = await supabase.from("dashboards").select("user_id").eq("id", dashboard_id).maybeSingle();
-      if (dash) userId = dash.user_id;
+      const { data: op } = await supabase.from("operations").select("user_id").eq("id", dashboard_id).maybeSingle();
+      if (op?.user_id) {
+        userId = op.user_id;
+      } else {
+        const { data: dash } = await supabase.from("dashboards").select("user_id").eq("id", dashboard_id).maybeSingle();
+        if (dash?.user_id) userId = dash.user_id;
+      }
     }
 
     // Incrementar contagem no link de tracking se existir correspondência
