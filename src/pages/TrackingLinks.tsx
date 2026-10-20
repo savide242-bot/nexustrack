@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboard } from "@/contexts/DashboardContext";
@@ -10,7 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Link2, Plus, Copy, Check, ExternalLink, Trash2, MousePointerClick, Users, ShoppingBag } from "lucide-react";
+import {
+  Link2, Plus, Copy, Check, ExternalLink, Trash2, MousePointerClick,
+  Users, ShoppingBag, Instagram, Camera, MessageCircle, Film, Sparkles, Layers
+} from "lucide-react";
 
 interface TrackingLink {
   id: string;
@@ -39,6 +42,7 @@ export default function TrackingLinks() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Formulário padrão
   const [form, setForm] = useState({
     name: "",
     destination_url: "",
@@ -48,6 +52,11 @@ export default function TrackingLinks() {
     utm_content: "{{ad.name}}",
     utm_term: "{{adset.name}}",
   });
+
+  // Estado do Gerador Rápido Orgânico Multi-Contas
+  const [organicBaseUrl, setOrganicBaseUrl] = useState("");
+  const [account1, setAccount1] = useState("conta1");
+  const [account2, setAccount2] = useState("conta2");
 
   const loadLinks = async () => {
     if (!user || !current) return;
@@ -82,6 +91,61 @@ export default function TrackingLinks() {
       return "";
     }
   }, [form, current]);
+
+  const applyPreset = (preset: "fb" | "bio" | "stories" | "direct" | "reels", customAccount?: string) => {
+    const acc = customAccount || "minhaconta";
+    if (preset === "fb") {
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || "Campanha Meta Ads",
+        utm_source: "fb",
+        utm_medium: "cpc",
+        utm_campaign: "{{campaign.name}}",
+        utm_content: "{{ad.name}}",
+        utm_term: "{{adset.name}}",
+      }));
+    } else if (preset === "bio") {
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || `Link na Bio - @${acc}`,
+        utm_source: acc,
+        utm_medium: "bio",
+        utm_campaign: "perfil_bio",
+        utm_content: "link_bio",
+        utm_term: "organico",
+      }));
+    } else if (preset === "stories") {
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || `Stories - @${acc}`,
+        utm_source: acc,
+        utm_medium: "stories",
+        utm_campaign: "stories_oferta",
+        utm_content: "story_arrasta",
+        utm_term: "organico",
+      }));
+    } else if (preset === "direct") {
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || `Direct 1-a-1 - @${acc}`,
+        utm_source: acc,
+        utm_medium: "direct",
+        utm_campaign: "atendimento",
+        utm_content: "mensagem_direct",
+        utm_term: "organico",
+      }));
+    } else if (preset === "reels") {
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || `Reels - @${acc}`,
+        utm_source: acc,
+        utm_medium: "reels",
+        utm_campaign: "video_reels",
+        utm_content: "comentario_fixado",
+        utm_term: "organico",
+      }));
+    }
+  };
 
   const handleSave = async () => {
     if (!user || !current || !form.name.trim() || !form.destination_url.trim()) {
@@ -139,14 +203,42 @@ export default function TrackingLinks() {
     loadLinks();
   };
 
+  // Helper para gerar URL orgânica instantânea
+  const buildOrganicUrl = (account: string, medium: string, campaign: string) => {
+    const raw = organicBaseUrl.trim() || "https://minhapagina.com";
+    try {
+      const url = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
+      const cleanAcc = account.replace(/^@/, "").trim() || "conta";
+      url.searchParams.set("utm_source", cleanAcc);
+      url.searchParams.set("utm_medium", medium);
+      url.searchParams.set("utm_campaign", campaign);
+      url.searchParams.set("src", `${cleanAcc}_${medium}`);
+      if (current?.id) url.searchParams.set("nx_dash", current.id);
+      return url.toString();
+    } catch {
+      return "";
+    }
+  };
+
+  const copyOrganicUrl = (url: string, label: string) => {
+    if (!url) return;
+    navigator.clipboard.writeText(url);
+    toast({ title: `Link ${label} copiado!`, description: "Cole na bio, stories ou direct para rastrear." });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-            <Link2 className="h-6 w-6 text-primary" />
-            Links de Rastreamento (UTMify)
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl font-bold flex items-center gap-2">
+              <Link2 className="h-6 w-6 text-primary" />
+              Links de Rastreamento (UTMify Engine)
+            </h1>
+            <Badge variant="outline" className="border-border text-xs">
+              {current?.name || "Operação Geral"}
+            </Badge>
+          </div>
           <p className="text-sm text-muted-foreground mt-0.5">
             Crie links com UTMs e parâmetros dinâmicos vinculados à dashboard{" "}
             <span className="font-semibold text-foreground">"{current?.name || "Geral"}"</span>.
@@ -157,9 +249,141 @@ export default function TrackingLinks() {
         </Button>
       </div>
 
+      {/* GERADOR RÁPIDO DE MÚLTIPLAS CONTAS ORGÂNICAS (CONTA 1 & CONTA 2) */}
+      <Card className="glass-card border-border border-primary/30">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Gerador de Links Orgânicos Multi-Contas (Instagram / TikTok)
+            </CardTitle>
+            <Badge variant="secondary" className="text-xs">
+              Identificação 100% Precisa de Contas & Locais
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Gera links com <code className="text-primary font-mono font-bold">utm_source</code> (sua conta), <code className="text-primary font-mono font-bold">utm_medium</code> (bio/stories/direct) e parâmetro <code className="text-primary font-mono font-bold">src</code> para que qualquer checkout (Hotmart, Kiwify, PerfectPay, Eduzz) separe cada centavo de faturamento por conta.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Página de Destino / Checkout</Label>
+              <Input
+                value={organicBaseUrl}
+                onChange={(e) => setOrganicBaseUrl(e.target.value)}
+                placeholder="https://minhapagina.com ou link do produto"
+                className="bg-secondary text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold flex items-center gap-1">
+                <Instagram className="h-3.5 w-3.5 text-purple-400" /> Nome da Conta 1
+              </Label>
+              <Input
+                value={account1}
+                onChange={(e) => setAccount1(e.target.value)}
+                placeholder="conta1 (ex: perfil_principal)"
+                className="bg-secondary text-xs font-mono"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold flex items-center gap-1">
+                <Instagram className="h-3.5 w-3.5 text-pink-400" /> Nome da Conta 2
+              </Label>
+              <Input
+                value={account2}
+                onChange={(e) => setAccount2(e.target.value)}
+                placeholder="conta2 (ex: perfil_secundario)"
+                className="bg-secondary text-xs font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 pt-2">
+            {/* Bloco Conta 1 */}
+            <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-sm text-purple-300 flex items-center gap-1.5">
+                  <Instagram className="h-4 w-4" /> @{account1.replace(/^@/, "")}
+                </span>
+                <span className="text-[11px] text-muted-foreground">Conta 1</span>
+              </div>
+              <div className="space-y-1.5 text-xs">
+                {[
+                  { label: "Link na Bio", icon: Link2, medium: "bio", campaign: "bio_perfil" },
+                  { label: "Stories", icon: Camera, medium: "stories", campaign: "stories" },
+                  { label: "Direct 1-a-1", icon: MessageCircle, medium: "direct", campaign: "direct" },
+                  { label: "Reels", icon: Film, medium: "reels", campaign: "reels" },
+                ].map((item) => {
+                  const url = buildOrganicUrl(account1, item.medium, item.campaign);
+                  return (
+                    <div key={item.medium} className="flex items-center justify-between bg-secondary/40 rounded px-2.5 py-1.5 gap-2">
+                      <span className="flex items-center gap-1.5 text-foreground font-medium shrink-0">
+                        <item.icon className="h-3.5 w-3.5 text-primary" /> {item.label}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[180px]">
+                        {url}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10 shrink-0"
+                        onClick={() => copyOrganicUrl(url, `${item.label} (@${account1})`)}
+                      >
+                        <Copy className="h-3 w-3 mr-1" /> Copiar
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Bloco Conta 2 */}
+            <div className="rounded-lg border border-pink-500/30 bg-pink-500/5 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-sm text-pink-300 flex items-center gap-1.5">
+                  <Instagram className="h-4 w-4" /> @{account2.replace(/^@/, "")}
+                </span>
+                <span className="text-[11px] text-muted-foreground">Conta 2</span>
+              </div>
+              <div className="space-y-1.5 text-xs">
+                {[
+                  { label: "Link na Bio", icon: Link2, medium: "bio", campaign: "bio_perfil" },
+                  { label: "Stories", icon: Camera, medium: "stories", campaign: "stories" },
+                  { label: "Direct 1-a-1", icon: MessageCircle, medium: "direct", campaign: "direct" },
+                  { label: "Reels", icon: Film, medium: "reels", campaign: "reels" },
+                ].map((item) => {
+                  const url = buildOrganicUrl(account2, item.medium, item.campaign);
+                  return (
+                    <div key={item.medium} className="flex items-center justify-between bg-secondary/40 rounded px-2.5 py-1.5 gap-2">
+                      <span className="flex items-center gap-1.5 text-foreground font-medium shrink-0">
+                        <item.icon className="h-3.5 w-3.5 text-primary" /> {item.label}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[180px]">
+                        {url}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10 shrink-0"
+                        onClick={() => copyOrganicUrl(url, `${item.label} (@${account2})`)}
+                      >
+                        <Copy className="h-3 w-3 mr-1" /> Copiar
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* LISTA DE LINKS CRIADOS */}
       <Card className="glass-card border-border">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Links Criados</CardTitle>
+          <CardTitle className="text-lg">Links Salvos na Dashboard "{current?.name || "Geral"}"</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -167,9 +391,9 @@ export default function TrackingLinks() {
           ) : links.length === 0 ? (
             <div className="text-center py-12 border border-dashed border-border rounded-xl">
               <Link2 className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-50" />
-              <p className="font-semibold text-foreground">Nenhum link de rastreamento criado ainda</p>
+              <p className="font-semibold text-foreground">Nenhum link de rastreamento criado ainda nesta dashboard</p>
               <p className="text-xs text-muted-foreground mt-1 mb-4">
-                Gere seus links com parâmetros do Facebook Ads para rastrear cada centavo convertido.
+                Gere seus links com parâmetros do Facebook Ads ou Orgânicos para rastrear cada centavo convertido.
               </p>
               <Button size="sm" onClick={() => setDialogOpen(true)} className="gap-2">
                 <Plus className="h-4 w-4" /> Criar primeiro link
@@ -181,9 +405,9 @@ export default function TrackingLinks() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
-                    <TableHead>Origem / Campanha</TableHead>
+                    <TableHead>Origem / Meio</TableHead>
+                    <TableHead>Campanha</TableHead>
                     <TableHead className="text-right">Cliques</TableHead>
-                    <TableHead className="text-right">Leads</TableHead>
                     <TableHead className="text-right">Vendas</TableHead>
                     <TableHead className="text-right">Receita</TableHead>
                     <TableHead className="text-right w-24">Ações</TableHead>
@@ -193,22 +417,22 @@ export default function TrackingLinks() {
                   {links.map((link) => (
                     <TableRow key={link.id}>
                       <TableCell className="font-medium max-w-[200px]">
-                        <p className="truncate text-foreground">{link.name}</p>
+                        <p className="truncate text-foreground font-semibold">{link.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate">{link.destination_url}</p>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
-                          <Badge variant="outline" className="text-[10px]">{link.utm_source || "Sem source"}</Badge>
-                          {link.utm_campaign && (
-                            <Badge variant="secondary" className="text-[10px]">{link.utm_campaign}</Badge>
+                          <Badge variant="outline" className="text-[10px] font-mono">{link.utm_source || "Sem source"}</Badge>
+                          {link.utm_medium && (
+                            <Badge variant="secondary" className="text-[10px]">{link.utm_medium}</Badge>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs">
-                        {link.clicks.toLocaleString()}
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {link.utm_campaign || "—"}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs">
-                        {link.leads.toLocaleString()}
+                        {link.clicks.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold text-primary">
                         {link.sales}
@@ -251,7 +475,7 @@ export default function TrackingLinks() {
         </CardContent>
       </Card>
 
-      {/* Modal Criar Link */}
+      {/* Modal Criar Link Customizado */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="glass-card border-border max-w-lg">
           <DialogHeader>
@@ -259,12 +483,34 @@ export default function TrackingLinks() {
           </DialogHeader>
 
           <div className="space-y-3.5">
+            {/* Presets Rápidos */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Preencher com Modelo Rápido:</Label>
+              <div className="flex flex-wrap gap-1.5">
+                <Button type="button" size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("fb")}>
+                  ⚡ Meta Ads
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("bio", account1)}>
+                  🔗 Link na Bio
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("stories", account1)}>
+                  📸 Stories
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("direct", account1)}>
+                  💬 Direct
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("reels", account1)}>
+                  🎬 Reels
+                </Button>
+              </div>
+            </div>
+
             <div className="space-y-1">
               <Label>Nome de Identificação</Label>
               <Input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ex: Anúncio 01 - Criativo Vídeo Mulher"
+                placeholder="Ex: Anúncio 01 ou Bio Instagram Conta 1"
               />
             </div>
 
@@ -279,11 +525,11 @@ export default function TrackingLinks() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Origem (utm_source)</Label>
+                <Label className="text-xs">Origem (utm_source / @conta)</Label>
                 <Input
                   value={form.utm_source}
                   onChange={(e) => setForm({ ...form, utm_source: e.target.value })}
-                  placeholder="fb"
+                  placeholder="fb ou conta1"
                 />
               </div>
               <div className="space-y-1">
@@ -291,20 +537,17 @@ export default function TrackingLinks() {
                 <Input
                   value={form.utm_medium}
                   onChange={(e) => setForm({ ...form, utm_medium: e.target.value })}
-                  placeholder="cpc"
+                  placeholder="cpc, bio, stories, direct"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <div className="flex justify-between items-center">
-                <Label className="text-xs">Campanha (utm_campaign)</Label>
-                <span className="text-[10px] text-muted-foreground font-mono">Dica: {"{{campaign.name}}"}</span>
-              </div>
+              <Label className="text-xs">Campanha (utm_campaign)</Label>
               <Input
                 value={form.utm_campaign}
                 onChange={(e) => setForm({ ...form, utm_campaign: e.target.value })}
-                placeholder="{{campaign.name}}"
+                placeholder="{{campaign.name}} ou nome_campanha"
               />
             </div>
 
@@ -314,7 +557,7 @@ export default function TrackingLinks() {
                 <Input
                   value={form.utm_content}
                   onChange={(e) => setForm({ ...form, utm_content: e.target.value })}
-                  placeholder="{{ad.name}}"
+                  placeholder="{{ad.name}} ou story_01"
                 />
               </div>
               <div className="space-y-1">
@@ -322,7 +565,7 @@ export default function TrackingLinks() {
                 <Input
                   value={form.utm_term}
                   onChange={(e) => setForm({ ...form, utm_term: e.target.value })}
-                  placeholder="{{adset.name}}"
+                  placeholder="{{adset.name}} ou organico"
                 />
               </div>
             </div>

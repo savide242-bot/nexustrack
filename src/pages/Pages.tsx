@@ -1,13 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { FileText, Plus, Copy, Check, MousePointerClick, Eye, BarChart3, Globe, TrendingUp, Link, ShoppingCart, MapPin } from "lucide-react";
+import {
+  FileText, Plus, Copy, Check, MousePointerClick, Eye, BarChart3,
+  Globe, TrendingUp, Link, ShoppingCart, MapPin, Trash2, Layers
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
 
@@ -15,6 +19,7 @@ interface Page {
   id: string;
   user_id: string;
   campaign_id: string | null;
+  operation_id?: string | null;
   url: string;
   name: string;
   created_at: string;
@@ -32,6 +37,7 @@ interface PageMetrics {
 
 export default function Pages() {
   const { user } = useAuth();
+  const { current } = useDashboard();
   const { toast } = useToast();
   const [pages, setPages] = useState<Page[]>([]);
   const [open, setOpen] = useState(false);
@@ -42,22 +48,37 @@ export default function Pages() {
   const [pageMetrics, setPageMetrics] = useState<Record<string, PageMetrics>>({});
   const [dataLoading, setDataLoading] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
-
-  useEffect(() => {
-    if (!user) return;
-    fetchPages();
-  }, [user, dateRange]);
+  const [unassignedCount, setUnassignedCount] = useState(0);
 
   const fetchPages = useCallback(async () => {
+    if (!user) return;
     setDataLoading(true);
     const from = dateRange.from.toISOString();
     const to = dateRange.to.toISOString();
 
-    const { data: pagesData } = await supabase.from("pages").select("*").order("created_at", { ascending: false });
-    if (!pagesData) { setDataLoading(false); return; }
-    setPages(pagesData as Page[]);
+    // Filtra páginas exclusivamente da dashboard/operação selecionada
+    let query = supabase.from("pages").select("*").eq("user_id", user.id);
+    if (current?.id) {
+      query = query.eq("operation_id", current.id);
+    }
 
-    const pageIds = pagesData.map(p => p.id);
+    const { data: pagesData } = await query.order("created_at", { ascending: false });
+    const currentPages = (pagesData || []) as Page[];
+    setPages(currentPages);
+
+    // Checar se há páginas legadas sem operation_id atribuído
+    if (current?.id) {
+      const { count } = await supabase
+        .from("pages")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .is("operation_id", null);
+      setUnassignedCount(count || 0);
+    } else {
+      setUnassignedCount(0);
+    }
+
+    const pageIds = currentPages.map(p => p.id);
     if (pageIds.length === 0) { setDataLoading(false); return; }
 
     const [leadsRes, ctaRes, salesRes] = await Promise.all([
@@ -74,7 +95,7 @@ export default function Pages() {
     leads.forEach((l: any) => { if (l.id && l.page_id) leadToPage[l.id] = l.page_id; });
 
     const metrics: Record<string, PageMetrics> = {};
-    for (const page of pagesData) {
+    for (const page of currentPages) {
       const pageLeads = leads.filter(l => l.page_id === page.id);
       const pageCtas = ctas.filter(c => c.page_id === page.id);
       const pageSales = allSales.filter((s: any) => s.lead_id && leadToPage[s.lead_id] === page.id);
@@ -118,17 +139,26 @@ export default function Pages() {
     }
     setPageMetrics(metrics);
     setDataLoading(false);
-  }, [dateRange]);
+  }, [user, current?.id, dateRange]);
+
+  useEffect(() => {
+    fetchPages();
+  }, [fetchPages]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !name || !url) return;
     setLoading(true);
-    const { error } = await supabase.from("pages").insert({ user_id: user.id, url, name });
+    const { error } = await supabase.from("pages").insert({
+      user_id: user.id,
+      operation_id: current?.id || null,
+      url,
+      name,
+    });
     if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao criar página", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Página adicionada!" });
+      toast({ title: "Página adicionada à operação atual!" });
       setOpen(false);
       setName("");
       setUrl("");
@@ -137,12 +167,43 @@ export default function Pages() {
     setLoading(false);
   };
 
+  const handleDeletePage = async (page: Page) => {
+    if (!confirm(`Tem certeza que deseja excluir a página "${page.name}"? Esta ação removerá o rastreamento dela.`)) {
+      return;
+    }
+    try {
+      const { error } = await supabase.from("pages").delete().eq("id", page.id);
+      if (error) throw error;
+      toast({ title: "Página excluída com sucesso!" });
+      setPages(prev => prev.filter(p => p.id !== page.id));
+    } catch (e: any) {
+      toast({ title: "Erro ao excluir página", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleClaimLegacyPages = async () => {
+    if (!user || !current?.id) return;
+    try {
+      const { error } = await supabase
+        .from("pages")
+        .update({ operation_id: current.id })
+        .eq("user_id", user.id)
+        .is("operation_id", null);
+      if (error) throw error;
+      toast({ title: `${unassignedCount} página(s) vinculada(s) à dashboard ${current.name}!` });
+      fetchPages();
+    } catch (e: any) {
+      toast({ title: "Erro ao vincular", description: e.message, variant: "destructive" });
+    }
+  };
+
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 
   const getScript = (page: Page) => {
     return `<script>
 (function(){
   var pid="${page.id}";
+  var pDash="${page.operation_id || current?.id || ""}";
   var purl=encodeURIComponent(window.location.href);
   var params=new URLSearchParams(window.location.search);
   var fp=navigator.userAgent+screen.width+screen.height+new Date().getTimezoneOffset();
@@ -169,7 +230,9 @@ export default function Pages() {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      page_id:pid,page_url:purl,fingerprint:fingerprint,
+      page_id:pid,
+      nx_dash:pDash,
+      page_url:purl,fingerprint:fingerprint,
       ip_address:"",user_agent:navigator.userAgent,
       referrer:ref,
       utm_source:utmSrc||params.get("utm_source")||"",
@@ -218,16 +281,25 @@ export default function Pages() {
   const copyScript = (page: Page) => {
     navigator.clipboard.writeText(getScript(page));
     setCopied(page.id);
-    toast({ title: "Script copiado!" });
+    toast({ title: "Script copiado com sucesso!" });
     setTimeout(() => setCopied(null), 3000);
   };
 
   return (
     <div className="space-y-6">
+      {/* Header com identificação da Dashboard / Operação Ativa */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
         <div>
-          <h1 className="font-display text-3xl font-bold">Páginas</h1>
-          <p className="text-muted-foreground">Rastreie visitantes, CTAs e conversões das suas páginas de vendas</p>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-3xl font-bold">Páginas</h1>
+            <Badge variant="outline" className="border-primary/40 text-primary text-xs flex items-center gap-1">
+              <Layers className="h-3 w-3" />
+              {current?.name || "Operação Geral"}
+            </Badge>
+          </div>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Páginas exclusivas da dashboard <span className="font-semibold text-foreground">"{current?.name || "Geral"}"</span>. Rastreie visitantes, CTAs e conversões.
+          </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
           <DateFilter value={dateRange} onChange={setDateRange} />
@@ -238,16 +310,21 @@ export default function Pages() {
               </Button>
             </DialogTrigger>
             <DialogContent className="glass-card border-border">
-              <DialogHeader><DialogTitle className="font-display">Adicionar Página</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle className="font-display">Adicionar Página à Operação "{current?.name || "Geral"}"</DialogTitle>
+              </DialogHeader>
               <form onSubmit={handleCreate} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Nome</Label>
-                  <Input value={name} onChange={e => setName(e.target.value)} placeholder="Página de Vendas Principal" required />
+                  <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Página de Vendas Principal" required />
                 </div>
                 <div className="space-y-2">
-                  <Label>URL</Label>
+                  <Label>URL Completa</Label>
                   <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://minhapagina.com" required />
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Esta página ficará vinculada e isolada apenas nesta dashboard/operação.
+                </p>
                 <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
                   {loading ? "Adicionando..." : "Adicionar Página"}
                 </Button>
@@ -257,11 +334,30 @@ export default function Pages() {
         </div>
       </div>
 
+      {/* Banner se houver páginas anteriores não vinculadas */}
+      {unassignedCount > 0 && (
+        <div className="p-3.5 rounded-lg border border-primary/30 bg-primary/5 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <div>
+            <p className="font-semibold text-foreground">Você possui {unassignedCount} página(s) criadas anteriormente sem dashboard definida.</p>
+            <p className="text-xs text-muted-foreground">Deseja vincular essas páginas à dashboard atual "{current?.name}"?</p>
+          </div>
+          <Button size="sm" variant="outline" className="border-primary/50 text-primary" onClick={handleClaimLegacyPages}>
+            Vincular a esta Dashboard
+          </Button>
+        </div>
+      )}
+
       {pages.length === 0 ? (
         <Card className="glass-card border-border animate-fade-in">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">Nenhuma página adicionada ainda</p>
+            <FileText className="mb-4 h-12 w-12 text-muted-foreground/60" />
+            <p className="font-medium text-foreground">Nenhuma página nesta dashboard ainda</p>
+            <p className="text-xs text-muted-foreground mt-1 mb-4 text-center max-w-sm">
+              Cada dashboard possui suas próprias páginas isoladas. Clique em "Nova Página" para adicionar a página de vendas desta operação.
+            </p>
+            <Button size="sm" onClick={() => setOpen(true)} className="gradient-primary text-primary-foreground gap-1.5">
+              <Plus className="h-4 w-4" /> Adicionar Página
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -273,15 +369,36 @@ export default function Pages() {
                 <CardHeader>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="min-w-0">
-                      <CardTitle className="font-display text-lg">{page.name}</CardTitle>
-                      <p className="text-sm text-muted-foreground flex items-center gap-1 truncate">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="font-display text-lg">{page.name}</CardTitle>
+                        <Badge variant="secondary" className="text-[10px] font-mono">
+                          {current?.name || "Operação"}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground flex items-center gap-1 truncate mt-0.5">
                         <Link className="h-3 w-3 flex-shrink-0" /><span className="truncate">{page.url}</span>
                       </p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => copyScript(page)} className="border-border w-full sm:w-auto flex-shrink-0 active:scale-95 transition-transform">
-                      {copied === page.id ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
-                      {copied === page.id ? "Copiado!" : "Copiar Script"}
-                    </Button>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => copyScript(page)}
+                        className="border-border flex-1 sm:flex-initial active:scale-95 transition-transform"
+                      >
+                        {copied === page.id ? <Check className="mr-2 h-4 w-4 text-primary" /> : <Copy className="mr-2 h-4 w-4" />}
+                        {copied === page.id ? "Copiado!" : "Copiar Script"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeletePage(page)}
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-9 px-2.5 active:scale-95 transition-transform shrink-0"
+                        title="Remover Página"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">

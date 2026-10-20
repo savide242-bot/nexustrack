@@ -13,7 +13,7 @@ import {
   Share2, Radio, FileText, Code2, FlaskConical,
   Check, Copy, Plus, RefreshCw, Facebook, ExternalLink,
   ChevronRight, ChevronDown, Trash2, Settings, Loader2, Video, Clapperboard, Music2, LayoutGrid,
-  Zap, Key, ShieldCheck
+  Zap, Key, ShieldCheck, Instagram, Camera, MessageCircle, Link2, Sparkles
 } from "lucide-react";
 import { PixelManager } from "@/components/PixelManager";
 
@@ -825,29 +825,141 @@ export default function Integrations() {
 
       {/* ABA 3: UTMS */}
       {activeTab === "utms" && (
-        <Card className="glass-card border-border">
-          <CardHeader>
-            <CardTitle className="text-lg">Parâmetros de URL (Facebook Ads)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <p className="text-xs text-muted-foreground">
-              Copie o modelo de parâmetros de URL e cole no Gerenciador de Anúncios do Facebook:
-            </p>
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold">Parâmetros Oficiais de Rastreamento:</Label>
-              <div className="flex gap-2">
-                <Input readOnly value={metaUtmParams} className="font-mono text-xs bg-muted/20 text-primary" />
-                <Button
-                  onClick={() => copyToClipboard(metaUtmParams, "utms")}
-                  className="gradient-primary text-primary-foreground shrink-0 gap-1.5"
-                >
-                  {copiedText === "utms" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  Copiar Parâmetros
-                </Button>
+        <div className="space-y-6">
+          <Card className="glass-card border-border">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Facebook className="h-5 w-5 text-blue-400" />
+                  Parâmetros de URL Oficiais (Facebook Ads)
+                </CardTitle>
+                <Badge variant="outline" className="border-border text-xs">Tráfego Pago</Badge>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Copie os parâmetros abaixo e cole no campo <strong>Parâmetros de URL</strong> do Gerenciador de Anúncios da Meta no nível de Anúncio. Os parâmetros dinâmicos preenchem o nome da campanha e do anúncio automaticamente.
+              </p>
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold">Parâmetros Oficiais de Rastreamento Meta:</Label>
+                <div className="flex gap-2">
+                  <Input readOnly value={metaUtmParams} className="font-mono text-xs bg-muted/20 text-primary" />
+                  <Button
+                    onClick={() => copyToClipboard(metaUtmParams, "utms")}
+                    className="gradient-primary text-primary-foreground shrink-0 gap-1.5"
+                  >
+                    {copiedText === "utms" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    Copiar Parâmetros
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* RASTREAMENTO ORGÂNICO MULTI-CONTAS */}
+          <Card className="glass-card border-border border-purple-500/30">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Instagram className="h-5 w-5 text-purple-400" />
+                  Rastreamento Orgânico Multi-Contas (Instagram / TikTok)
+                </CardTitle>
+                <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-xs">
+                  Divisão de Vendas por Contas
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Para quem roda tráfego orgânico em mais de uma conta (ex: duas contas no Instagram) e quer saber com precisão de qual conta e de qual local veio cada venda, utilize a estrutura padronizada da NexusTrack:
+              </p>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg bg-secondary/30 border border-border p-3 space-y-1.5">
+                  <span className="font-mono font-bold text-xs text-purple-400 flex items-center gap-1.5">
+                    <Instagram className="h-3.5 w-3.5" /> utm_source (Nome da Conta)
+                  </span>
+                  <p className="text-xs text-muted-foreground">
+                    Define qual perfil gerou o clique. Exemplo: <code className="text-primary font-mono">utm_source=conta1</code> e <code className="text-primary font-mono">utm_source=conta2</code>.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-secondary/30 border border-border p-3 space-y-1.5">
+                  <span className="font-mono font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5" /> utm_medium (Local do Link)
+                  </span>
+                  <p className="text-xs text-muted-foreground">
+                    Define o local exato: <code className="text-primary font-mono">bio</code> (link da bio), <code className="text-primary font-mono">stories</code> (stories), <code className="text-primary font-mono">direct</code> (conversa privada) ou <code className="text-primary font-mono">reels</code>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <Label className="text-xs font-semibold">Exemplos Prontos para Adicionar aos Seus Links:</Label>
+                <div className="space-y-2 text-xs font-mono">
+                  <div className="flex items-center justify-between bg-muted/20 border border-border rounded p-2 gap-2">
+                    <div className="min-w-0">
+                      <span className="text-[11px] text-muted-foreground block font-sans font-medium">Conta 1 • Link na Bio:</span>
+                      <span className="text-primary truncate block">?utm_source=conta1&utm_medium=bio&utm_campaign=perfil&src=conta1_bio</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 h-7 text-xs"
+                      onClick={() => copyToClipboard("?utm_source=conta1&utm_medium=bio&utm_campaign=perfil&src=conta1_bio", "bio1")}
+                    >
+                      {copiedText === "bio1" ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-muted/20 border border-border rounded p-2 gap-2">
+                    <div className="min-w-0">
+                      <span className="text-[11px] text-muted-foreground block font-sans font-medium">Conta 1 • Link nos Stories:</span>
+                      <span className="text-primary truncate block">?utm_source=conta1&utm_medium=stories&utm_campaign=stories&src=conta1_stories</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 h-7 text-xs"
+                      onClick={() => copyToClipboard("?utm_source=conta1&utm_medium=stories&utm_campaign=stories&src=conta1_stories", "stor1")}
+                    >
+                      {copiedText === "stor1" ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-muted/20 border border-border rounded p-2 gap-2">
+                    <div className="min-w-0">
+                      <span className="text-[11px] text-muted-foreground block font-sans font-medium">Conta 2 • Link na Bio:</span>
+                      <span className="text-primary truncate block">?utm_source=conta2&utm_medium=bio&utm_campaign=perfil&src=conta2_bio</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 h-7 text-xs"
+                      onClick={() => copyToClipboard("?utm_source=conta2&utm_medium=bio&utm_campaign=perfil&src=conta2_bio", "bio2")}
+                    >
+                      {copiedText === "bio2" ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-muted/20 border border-border rounded p-2 gap-2">
+                    <div className="min-w-0">
+                      <span className="text-[11px] text-muted-foreground block font-sans font-medium">Conta 2 • Link nos Stories:</span>
+                      <span className="text-primary truncate block">?utm_source=conta2&utm_medium=stories&utm_campaign=stories&src=conta2_stories</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 h-7 text-xs"
+                      onClick={() => copyToClipboard("?utm_source=conta2&utm_medium=stories&utm_campaign=stories&src=conta2_stories", "stor2")}
+                    >
+                      {copiedText === "stor2" ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* ABA 4: PIXEL & REGRAS (ESTILO UTMIFY POTENTE) */}
