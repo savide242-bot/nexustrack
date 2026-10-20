@@ -203,20 +203,16 @@ export default function TrackingLinks() {
     loadLinks();
   };
 
-  // Helper para gerar URL orgânica instantânea
-  const buildOrganicUrl = (account: string, medium: string, campaign: string) => {
+  // Helper para gerar URL orgânica ultra curta
+  const buildOrganicUrl = (accKey: "1" | "2", code?: string) => {
     const raw = organicBaseUrl.trim() || "https://minhapagina.com";
     try {
       const url = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
-      const cleanAcc = account.replace(/^@/, "").trim() || "conta";
-      url.searchParams.set("utm_source", cleanAcc);
-      url.searchParams.set("utm_medium", medium);
-      url.searchParams.set("utm_campaign", campaign);
-      url.searchParams.set("src", `${cleanAcc}_${medium}`);
-      if (current?.id) url.searchParams.set("nx_dash", current.id);
+      const val = code ? `${accKey}_${code}` : accKey;
+      url.searchParams.set("c", val);
       return url.toString();
     } catch {
-      return "";
+      return raw;
     }
   };
 
@@ -302,36 +298,53 @@ export default function TrackingLinks() {
 
           <div className="grid gap-4 md:grid-cols-2 pt-2">
             {/* Bloco Conta 1 */}
-            <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-3.5 space-y-2.5">
+            <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3.5 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-sm text-purple-300 flex items-center gap-1.5">
-                  <Instagram className="h-4 w-4" /> @{account1.replace(/^@/, "")}
-                </span>
-                <span className="text-[11px] text-muted-foreground">Conta 1</span>
+                <div>
+                  <span className="font-mono font-bold text-sm text-purple-300 flex items-center gap-1.5">
+                    <Instagram className="h-4 w-4" /> @{account1.replace(/^@/, "")}
+                  </span>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Links ultra curtos para a Conta 1</p>
+                </div>
+                <Badge variant="secondary" className="text-[10px]">Conta 1</Badge>
               </div>
-              <div className="space-y-1.5 text-xs">
+
+              {/* Link Único Geral */}
+              <div className="rounded-lg bg-primary/10 border border-primary/30 p-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-muted-foreground block">⚡ Link Geral Único (Usa em Tudo):</span>
+                  <span className="font-mono text-xs font-bold text-primary truncate block">
+                    {buildOrganicUrl("1")}
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  className="gradient-primary text-primary-foreground h-7 px-2.5 text-xs shrink-0"
+                  onClick={() => copyOrganicUrl(buildOrganicUrl("1"), `Link Geral (@${account1})`)}
+                >
+                  <Copy className="h-3 w-3 mr-1" /> Copiar
+                </Button>
+              </div>
+
+              <div className="space-y-1 text-xs">
                 {[
-                  { label: "Link na Bio", icon: Link2, medium: "bio", campaign: "bio_perfil" },
-                  { label: "Stories", icon: Camera, medium: "stories", campaign: "stories" },
-                  { label: "Direct 1-a-1", icon: MessageCircle, medium: "direct", campaign: "direct" },
-                  { label: "Reels", icon: Film, medium: "reels", campaign: "reels" },
+                  { label: "Bio", code: "b" },
+                  { label: "Stories", code: "s" },
+                  { label: "Direct", code: "d" },
                 ].map((item) => {
-                  const url = buildOrganicUrl(account1, item.medium, item.campaign);
+                  const url = buildOrganicUrl("1", item.code);
                   return (
-                    <div key={item.medium} className="flex items-center justify-between bg-secondary/40 rounded px-2.5 py-1.5 gap-2">
-                      <span className="flex items-center gap-1.5 text-foreground font-medium shrink-0">
-                        <item.icon className="h-3.5 w-3.5 text-primary" /> {item.label}
-                      </span>
-                      <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[180px]">
-                        {url}
+                    <div key={item.code} className="flex items-center justify-between bg-secondary/40 rounded px-2 py-1 gap-2 border border-border/40">
+                      <span className="text-foreground font-medium text-[11px] shrink-0">
+                        {item.label}: <span className="font-mono text-primary">{url}</span>
                       </span>
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-6 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10 shrink-0"
+                        className="h-5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground shrink-0"
                         onClick={() => copyOrganicUrl(url, `${item.label} (@${account1})`)}
                       >
-                        <Copy className="h-3 w-3 mr-1" /> Copiar
+                        Copiar
                       </Button>
                     </div>
                   );
@@ -340,36 +353,53 @@ export default function TrackingLinks() {
             </div>
 
             {/* Bloco Conta 2 */}
-            <div className="rounded-lg border border-pink-500/30 bg-pink-500/5 p-3.5 space-y-2.5">
+            <div className="rounded-xl border border-pink-500/30 bg-pink-500/5 p-3.5 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-sm text-pink-300 flex items-center gap-1.5">
-                  <Instagram className="h-4 w-4" /> @{account2.replace(/^@/, "")}
-                </span>
-                <span className="text-[11px] text-muted-foreground">Conta 2</span>
+                <div>
+                  <span className="font-mono font-bold text-sm text-pink-300 flex items-center gap-1.5">
+                    <Instagram className="h-4 w-4" /> @{account2.replace(/^@/, "")}
+                  </span>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Links ultra curtos para a Conta 2</p>
+                </div>
+                <Badge variant="secondary" className="text-[10px]">Conta 2</Badge>
               </div>
-              <div className="space-y-1.5 text-xs">
+
+              {/* Link Único Geral */}
+              <div className="rounded-lg bg-pink-500/10 border border-pink-500/30 p-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-muted-foreground block">⚡ Link Geral Único (Usa em Tudo):</span>
+                  <span className="font-mono text-xs font-bold text-pink-300 truncate block">
+                    {buildOrganicUrl("2")}
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-pink-600 hover:bg-pink-500 text-white h-7 px-2.5 text-xs shrink-0"
+                  onClick={() => copyOrganicUrl(buildOrganicUrl("2"), `Link Geral (@${account2})`)}
+                >
+                  <Copy className="h-3 w-3 mr-1" /> Copiar
+                </Button>
+              </div>
+
+              <div className="space-y-1 text-xs">
                 {[
-                  { label: "Link na Bio", icon: Link2, medium: "bio", campaign: "bio_perfil" },
-                  { label: "Stories", icon: Camera, medium: "stories", campaign: "stories" },
-                  { label: "Direct 1-a-1", icon: MessageCircle, medium: "direct", campaign: "direct" },
-                  { label: "Reels", icon: Film, medium: "reels", campaign: "reels" },
+                  { label: "Bio", code: "b" },
+                  { label: "Stories", code: "s" },
+                  { label: "Direct", code: "d" },
                 ].map((item) => {
-                  const url = buildOrganicUrl(account2, item.medium, item.campaign);
+                  const url = buildOrganicUrl("2", item.code);
                   return (
-                    <div key={item.medium} className="flex items-center justify-between bg-secondary/40 rounded px-2.5 py-1.5 gap-2">
-                      <span className="flex items-center gap-1.5 text-foreground font-medium shrink-0">
-                        <item.icon className="h-3.5 w-3.5 text-primary" /> {item.label}
-                      </span>
-                      <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[180px]">
-                        {url}
+                    <div key={item.code} className="flex items-center justify-between bg-secondary/40 rounded px-2 py-1 gap-2 border border-border/40">
+                      <span className="text-foreground font-medium text-[11px] shrink-0">
+                        {item.label}: <span className="font-mono text-pink-300">{url}</span>
                       </span>
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-6 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10 shrink-0"
+                        className="h-5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground shrink-0"
                         onClick={() => copyOrganicUrl(url, `${item.label} (@${account2})`)}
                       >
-                        <Copy className="h-3 w-3 mr-1" /> Copiar
+                        Copiar
                       </Button>
                     </div>
                   );

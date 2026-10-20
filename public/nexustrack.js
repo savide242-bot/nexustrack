@@ -147,14 +147,33 @@
   setCookie('_fbp', fbp, 90);
   if (fbc) setCookie('_fbc', fbc, 90);
 
-  // Captura de Parâmetros UTM atuais
+  // Captura inteligente de Parâmetro Ultra Curto ?c=1 ou ?c=1_b ou ?c=2_s
+  var shortCode = getUrlParam('c') || getUrlParam('conta') || '';
+  var parsedAccount = '';
+  var parsedPlacement = '';
+  if (shortCode) {
+    var parts = shortCode.split('_');
+    var accKey = parts[0];
+    parsedAccount = accKey === '1' ? 'conta1' : accKey === '2' ? 'conta2' : accKey;
+    if (parts[1]) {
+      var pl = parts[1].toLowerCase();
+      parsedPlacement = (pl === 'b' || pl === 'bio') ? 'bio' :
+                        (pl === 's' || pl === 'stories' || pl === 'story') ? 'stories' :
+                        (pl === 'd' || pl === 'dir' || pl === 'direct') ? 'direct' :
+                        (pl === 'r' || pl === 'reels') ? 'reels' : pl;
+    } else {
+      parsedPlacement = 'stories'; // Default para quando usa só ?c=1
+    }
+  }
+
+  // Captura de Parâmetros UTM atuais (com expansão automática de ?c=1)
   var currentUtms = {
-    utm_source: getUrlParam('utm_source'),
-    utm_medium: getUrlParam('utm_medium'),
-    utm_campaign: getUrlParam('utm_campaign'),
-    utm_content: getUrlParam('utm_content'),
-    utm_term: getUrlParam('utm_term'),
-    src: getUrlParam('src'),
+    utm_source: getUrlParam('utm_source') || parsedAccount,
+    utm_medium: getUrlParam('utm_medium') || parsedPlacement,
+    utm_campaign: getUrlParam('utm_campaign') || (parsedAccount ? 'organico' : ''),
+    utm_content: getUrlParam('utm_content') || '',
+    utm_term: getUrlParam('utm_term') || '',
+    src: getUrlParam('src') || (parsedAccount ? (parsedAccount + (parsedPlacement ? '_' + parsedPlacement : '')) : ''),
     sck: getUrlParam('sck'),
     nx_dash: getUrlParam('nx_dash'),
   };

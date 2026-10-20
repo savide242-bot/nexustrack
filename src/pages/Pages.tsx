@@ -242,20 +242,54 @@ export default function Pages() {
   var hash=0;for(var i=0;i<fp.length;i++){hash=((hash<<5)-hash)+fp.charCodeAt(i);hash|=0;}
   var fingerprint=Math.abs(hash).toString(36);
   var ref=document.referrer||"";
-  var utmSrc=params.get("utm_source")||"";
+  
+  // Detecção Inteligente de Parâmetro Ultra Curto ?c=1 ou ?c=1_b ou ?c=2_s
+  var sc=params.get("c")||params.get("conta")||"";
+  var pAcc="";var pMed="";
+  if(sc){
+    var pArr=sc.split("_");
+    pAcc=pArr[0]==="1"?"conta1":pArr[0]==="2"?"conta2":pArr[0];
+    if(pArr[1]){
+      var pl=pArr[1].toLowerCase();
+      pMed=(pl==="b"||pl==="bio")?"bio":(pl==="s"||pl==="stories")?"stories":(pl==="d"||pl==="direct")?"direct":"reels";
+    }else{
+      pMed="stories";
+    }
+  }
+
+  var utmSrc=params.get("utm_source")||pAcc||"";
+  var utmMed=params.get("utm_medium")||pMed||"";
+  var utmCamp=params.get("utm_campaign")||(pAcc?"organico":"")||"";
+  var utmSrcVal=params.get("src")||(pAcc?(pAcc+(pMed?"_"+pMed:"")):"")||"";
+
   if(!utmSrc&&ref.match(/instagram\\.com|l\\.instagram\\.com/i)){utmSrc="instagram";}
   if(!utmSrc&&ref.match(/facebook\\.com|fb\\.com|m\\.facebook/i)){utmSrc="facebook";}
   
+  // Injeta automaticamente as UTMs e src em todos os botões/links de checkout (Hotmart, Kiwify, PerfectPay, etc.)
+  function injectCheckoutParams(){
+    try{
+      var links=document.querySelectorAll("a[href*='hotmart'],a[href*='kiwify'],a[href*='perfectpay'],a[href*='eduzz'],a[href*='braip'],a[href*='monetizze'],a[href*='pay']");
+      for(var i=0;i<links.length;i++){
+        var u=new URL(links[i].href);
+        if(utmSrc)u.searchParams.set("utm_source",utmSrc);
+        if(utmMed)u.searchParams.set("utm_medium",utmMed);
+        if(utmCamp)u.searchParams.set("utm_campaign",utmCamp);
+        if(utmSrcVal)u.searchParams.set("src",utmSrcVal);
+        if(pDash)u.searchParams.set("nx_dash",pDash);
+        links[i].href=u.toString();
+      }
+    }catch(e){}
+  }
+  setTimeout(injectCheckoutParams,500);
+  setTimeout(injectCheckoutParams,2000);
+
   // Read _fbc and _fbp from cookies (Meta sets these)
   var getCk=function(n){return(document.cookie.match(new RegExp("(?:^|;\\\\s*)"+n+"=([^;]+)"))||[])[1]||"";};
   var fbcCookie=getCk("_fbc");
   var fbpCookie=getCk("_fbp");
-  // If no _fbc cookie but fbclid in URL, generate a valid fbc string
   var fbclid=params.get("fbclid")||"";
   if(!fbcCookie&&fbclid){fbcCookie="fb.1."+Date.now()+"."+fbclid;}
-  // If no _fbp cookie, generate one for matching
   if(!fbpCookie){fbpCookie="fb.1."+Date.now()+"."+Math.floor(Math.random()*2147483647);try{document.cookie="_fbp="+fbpCookie+";max-age=7776000;path=/;SameSite=Lax";}catch(e){}}
-  // Store _fbc cookie if we generated one
   if(fbcCookie&&!getCk("_fbc")){try{document.cookie="_fbc="+fbcCookie+";max-age=7776000;path=/;SameSite=Lax";}catch(e){}}
   
   fetch("https://${projectId}.supabase.co/functions/v1/track",{
@@ -268,10 +302,11 @@ export default function Pages() {
       ip_address:"",user_agent:navigator.userAgent,
       referrer:ref,
       utm_source:utmSrc||params.get("utm_source")||"",
-      utm_medium:params.get("utm_medium")||"",
-      utm_campaign:params.get("utm_campaign")||"",
+      utm_medium:utmMed||params.get("utm_medium")||"",
+      utm_campaign:utmCamp||params.get("utm_campaign")||"",
       utm_content:params.get("utm_content")||"",
       utm_term:params.get("utm_term")||"",
+      src:utmSrcVal,
       fbc:fbcCookie,
       fbp:fbpCookie
     })
@@ -295,6 +330,7 @@ export default function Pages() {
     }
     document.querySelectorAll("a,button,[data-cta]").forEach(function(el){
       el.addEventListener("click",function(){
+        injectCheckoutParams();
         fetch("https://${projectId}.supabase.co/functions/v1/track-cta",{
           method:"POST",
           headers:{"Content-Type":"application/json"},
@@ -317,15 +353,11 @@ export default function Pages() {
     setTimeout(() => setCopied(null), 3000);
   };
 
-  const buildSocialUrl = (pageUrl: string, acc: string, medium: string, camp: string) => {
+  const buildSocialUrl = (pageUrl: string, accKey: "1" | "2", code?: string) => {
     try {
       const url = new URL(pageUrl.startsWith("http") ? pageUrl : `https://${pageUrl}`);
-      const cleanAcc = acc.replace(/^@/, "").trim() || "conta";
-      url.searchParams.set("utm_source", cleanAcc);
-      url.searchParams.set("utm_medium", medium);
-      url.searchParams.set("utm_campaign", camp);
-      url.searchParams.set("src", `${cleanAcc}_${medium}`);
-      if (current?.id) url.searchParams.set("nx_dash", current.id);
+      const val = code ? `${accKey}_${code}` : accKey;
+      url.searchParams.set("c", val);
       return url.toString();
     } catch {
       return pageUrl;
@@ -588,44 +620,68 @@ export default function Pages() {
 
               <div className="space-y-4 pt-2">
                 {/* Bloco Conta 1 */}
-                <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3.5 space-y-2.5">
+                <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-sm text-purple-300 flex items-center gap-1.5">
-                      <Instagram className="h-4 w-4" /> @{account1.replace(/^@/, "")}
-                    </span>
+                    <div>
+                      <span className="font-mono font-bold text-sm text-purple-300 flex items-center gap-1.5">
+                        <Instagram className="h-4 w-4" /> @{account1.replace(/^@/, "")}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Links ultra curtos para a sua Conta 1</p>
+                    </div>
                     <Badge variant="secondary" className="text-[10px]">Conta 1</Badge>
                   </div>
-                  <div className="space-y-2 text-xs">
+
+                  {/* Opção Recomendada: 1 Link para Tudo */}
+                  <div className="rounded-lg bg-primary/10 border border-primary/30 p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        <span className="font-semibold text-xs text-foreground">Link Geral Único (Usa em Tudo)</span>
+                        <Badge variant="outline" className="text-[9px] border-primary/40 text-primary">Recomendado</Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Cole esse mesmo link na Bio, nos Stories e no Direct. Zero trabalho!
+                      </p>
+                      <span className="font-mono text-xs text-primary font-bold break-all block mt-1">
+                        {buildSocialUrl(selectedSocialPage.url, "1")}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="gradient-primary text-primary-foreground shrink-0 h-8 text-xs font-semibold"
+                      onClick={() => copySocialLink(buildSocialUrl(selectedSocialPage.url, "1"), "c1_all")}
+                    >
+                      {socialCopied === "c1_all" ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                      {socialCopied === "c1_all" ? "Copiado!" : "Copiar Link"}
+                    </Button>
+                  </div>
+
+                  {/* Links Separados se desejar */}
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground">Ou use links curtos específicos para cada local:</p>
                     {[
-                      { label: "Link na Bio", icon: Link, medium: "bio", camp: "bio_perfil" },
-                      { label: "Stories", icon: Camera, medium: "stories", camp: "stories" },
-                      { label: "Direct 1-a-1", icon: MessageCircle, medium: "direct", camp: "direct" },
-                      { label: "Reels", icon: Film, medium: "reels", camp: "reels" },
+                      { label: "Bio", desc: "Cole 1x no perfil", icon: Link, code: "b" },
+                      { label: "Stories", desc: "No sticker de link", icon: Camera, code: "s" },
+                      { label: "Direct", desc: "Em conversas privadas", icon: MessageCircle, code: "d" },
                     ].map((item) => {
-                      const finalUrl = buildSocialUrl(selectedSocialPage.url, account1, item.medium, item.camp);
-                      const key = `c1_${item.medium}`;
+                      const finalUrl = buildSocialUrl(selectedSocialPage.url, "1", item.code);
+                      const key = `c1_${item.code}`;
                       return (
-                        <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between bg-secondary/50 rounded-lg p-2 gap-2 border border-border/50">
+                        <div key={key} className="flex items-center justify-between bg-secondary/40 rounded-lg px-2.5 py-1.5 gap-2 border border-border/40">
                           <div className="min-w-0 flex-1">
-                            <span className="flex items-center gap-1.5 font-semibold text-foreground text-xs">
-                              <item.icon className="h-3.5 w-3.5 text-primary" /> {item.label}
-                            </span>
-                            <span className="font-mono text-[10px] text-muted-foreground break-all block mt-0.5">
-                              {finalUrl}
+                            <span className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+                              <item.icon className="h-3 w-3 text-primary" /> {item.label}:
+                              <span className="font-mono text-xs text-primary">{finalUrl}</span>
                             </span>
                           </div>
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="shrink-0 h-7 text-xs border-border"
+                            variant="ghost"
+                            className="shrink-0 h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
                             onClick={() => copySocialLink(finalUrl, key)}
                           >
-                            {socialCopied === key ? (
-                              <Check className="h-3 w-3 mr-1 text-primary" />
-                            ) : (
-                              <Copy className="h-3 w-3 mr-1" />
-                            )}
-                            {socialCopied === key ? "Copiado!" : "Copiar Link"}
+                            {socialCopied === key ? <Check className="h-3 w-3 mr-1 text-primary" /> : <Copy className="h-3 w-3 mr-1" />}
+                            {socialCopied === key ? "Copiado!" : "Copiar"}
                           </Button>
                         </div>
                       );
@@ -634,44 +690,68 @@ export default function Pages() {
                 </div>
 
                 {/* Bloco Conta 2 */}
-                <div className="rounded-xl border border-pink-500/30 bg-pink-500/5 p-3.5 space-y-2.5">
+                <div className="rounded-xl border border-pink-500/30 bg-pink-500/5 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-sm text-pink-300 flex items-center gap-1.5">
-                      <Instagram className="h-4 w-4" /> @{account2.replace(/^@/, "")}
-                    </span>
+                    <div>
+                      <span className="font-mono font-bold text-sm text-pink-300 flex items-center gap-1.5">
+                        <Instagram className="h-4 w-4" /> @{account2.replace(/^@/, "")}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Links ultra curtos para a sua Conta 2</p>
+                    </div>
                     <Badge variant="secondary" className="text-[10px]">Conta 2</Badge>
                   </div>
-                  <div className="space-y-2 text-xs">
+
+                  {/* Opção Recomendada: 1 Link para Tudo */}
+                  <div className="rounded-lg bg-pink-500/10 border border-pink-500/30 p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5 text-pink-400" />
+                        <span className="font-semibold text-xs text-foreground">Link Geral Único (Usa em Tudo)</span>
+                        <Badge variant="outline" className="text-[9px] border-pink-500/40 text-pink-300">Recomendado</Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Cole esse mesmo link na Bio, nos Stories e no Direct da Conta 2.
+                      </p>
+                      <span className="font-mono text-xs text-pink-300 font-bold break-all block mt-1">
+                        {buildSocialUrl(selectedSocialPage.url, "2")}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-pink-600 hover:bg-pink-500 text-white shrink-0 h-8 text-xs font-semibold"
+                      onClick={() => copySocialLink(buildSocialUrl(selectedSocialPage.url, "2"), "c2_all")}
+                    >
+                      {socialCopied === "c2_all" ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                      {socialCopied === "c2_all" ? "Copiado!" : "Copiar Link"}
+                    </Button>
+                  </div>
+
+                  {/* Links Separados se desejar */}
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground">Ou use links curtos específicos para cada local:</p>
                     {[
-                      { label: "Link na Bio", icon: Link, medium: "bio", camp: "bio_perfil" },
-                      { label: "Stories", icon: Camera, medium: "stories", camp: "stories" },
-                      { label: "Direct 1-a-1", icon: MessageCircle, medium: "direct", camp: "direct" },
-                      { label: "Reels", icon: Film, medium: "reels", camp: "reels" },
+                      { label: "Bio", desc: "Cole 1x no perfil", icon: Link, code: "b" },
+                      { label: "Stories", desc: "No sticker de link", icon: Camera, code: "s" },
+                      { label: "Direct", desc: "Em conversas privadas", icon: MessageCircle, code: "d" },
                     ].map((item) => {
-                      const finalUrl = buildSocialUrl(selectedSocialPage.url, account2, item.medium, item.camp);
-                      const key = `c2_${item.medium}`;
+                      const finalUrl = buildSocialUrl(selectedSocialPage.url, "2", item.code);
+                      const key = `c2_${item.code}`;
                       return (
-                        <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between bg-secondary/50 rounded-lg p-2 gap-2 border border-border/50">
+                        <div key={key} className="flex items-center justify-between bg-secondary/40 rounded-lg px-2.5 py-1.5 gap-2 border border-border/40">
                           <div className="min-w-0 flex-1">
-                            <span className="flex items-center gap-1.5 font-semibold text-foreground text-xs">
-                              <item.icon className="h-3.5 w-3.5 text-primary" /> {item.label}
-                            </span>
-                            <span className="font-mono text-[10px] text-muted-foreground break-all block mt-0.5">
-                              {finalUrl}
+                            <span className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+                              <item.icon className="h-3 w-3 text-primary" /> {item.label}:
+                              <span className="font-mono text-xs text-pink-300">{finalUrl}</span>
                             </span>
                           </div>
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="shrink-0 h-7 text-xs border-border"
+                            variant="ghost"
+                            className="shrink-0 h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
                             onClick={() => copySocialLink(finalUrl, key)}
                           >
-                            {socialCopied === key ? (
-                              <Check className="h-3 w-3 mr-1 text-primary" />
-                            ) : (
-                              <Copy className="h-3 w-3 mr-1" />
-                            )}
-                            {socialCopied === key ? "Copiado!" : "Copiar Link"}
+                            {socialCopied === key ? <Check className="h-3 w-3 mr-1 text-primary" /> : <Copy className="h-3 w-3 mr-1" />}
+                            {socialCopied === key ? "Copiado!" : "Copiar"}
                           </Button>
                         </div>
                       );
