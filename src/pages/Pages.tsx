@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   FileText, Plus, Copy, Check, MousePointerClick, Eye, BarChart3,
-  Globe, TrendingUp, Link, ShoppingCart, MapPin, Trash2, Layers
+  Globe, TrendingUp, Link, ShoppingCart, MapPin, Trash2, Layers,
+  Instagram, Sparkles, Camera, MessageCircle, Film
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { DateFilter, getDefaultRange, type DateRange } from "@/components/DateFilter";
@@ -41,14 +42,21 @@ export default function Pages() {
   const { toast } = useToast();
   const [pages, setPages] = useState<Page[]>([]);
   const [open, setOpen] = useState(false);
+  const [socialModalOpen, setSocialModalOpen] = useState(false);
+  const [selectedSocialPage, setSelectedSocialPage] = useState<Page | null>(null);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [socialCopied, setSocialCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pageMetrics, setPageMetrics] = useState<Record<string, PageMetrics>>({});
   const [dataLoading, setDataLoading] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultRange);
   const [unassignedCount, setUnassignedCount] = useState(0);
+
+  // Contas para o gerador de links da mesma página
+  const [account1, setAccount1] = useState("conta1");
+  const [account2, setAccount2] = useState("conta2");
 
   const fetchPages = useCallback(async () => {
     if (!user) return;
@@ -168,7 +176,7 @@ export default function Pages() {
   };
 
   const handleDeletePage = async (page: Page) => {
-    if (!confirm(`Tem certeza que deseja excluir a página "${page.name}"? Esta ação removerá o rastreamento dela.`)) {
+    if (!confirm(`Tem certeza que deseja excluir a página "${page.name}"? Esta ação removerá o rastreamento dela e disparará uma notificação.`)) {
       return;
     }
     try {
@@ -176,6 +184,30 @@ export default function Pages() {
       if (error) throw error;
       toast({ title: "Página excluída com sucesso!" });
       setPages(prev => prev.filter(p => p.id !== page.id));
+
+      // DISPARO DE PUSH NOTIFICATION AO REMOVER PÁGINA
+      const title = "⚠️ Página Removida!";
+      const body = `A página "${page.name}" (${page.url}) foi removida da dashboard "${current?.name || 'Geral'}".`;
+
+      try {
+        await supabase.functions.invoke("send-push", {
+          body: { user_id: user.id, title, body }
+        });
+      } catch (_) {}
+
+      // Disparo no navegador
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification(title, { body, icon: "/icon-192.png" });
+        } catch (_) {}
+      }
+
+      // Registro no histórico de notificações
+      await supabase.from("notifications_log").insert({
+        user_id: user.id,
+        title,
+        body,
+      });
     } catch (e: any) {
       toast({ title: "Erro ao excluir página", description: e.message, variant: "destructive" });
     }
@@ -285,6 +317,33 @@ export default function Pages() {
     setTimeout(() => setCopied(null), 3000);
   };
 
+  const buildSocialUrl = (pageUrl: string, acc: string, medium: string, camp: string) => {
+    try {
+      const url = new URL(pageUrl.startsWith("http") ? pageUrl : `https://${pageUrl}`);
+      const cleanAcc = acc.replace(/^@/, "").trim() || "conta";
+      url.searchParams.set("utm_source", cleanAcc);
+      url.searchParams.set("utm_medium", medium);
+      url.searchParams.set("utm_campaign", camp);
+      url.searchParams.set("src", `${cleanAcc}_${medium}`);
+      if (current?.id) url.searchParams.set("nx_dash", current.id);
+      return url.toString();
+    } catch {
+      return pageUrl;
+    }
+  };
+
+  const copySocialLink = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setSocialCopied(id);
+    toast({ title: "Link copiado para a área de transferência!" });
+    setTimeout(() => setSocialCopied(null), 2500);
+  };
+
+  const openSocialLinksForPage = (page: Page) => {
+    setSelectedSocialPage(page);
+    setSocialModalOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header com identificação da Dashboard / Operação Ativa */}
@@ -379,21 +438,30 @@ export default function Pages() {
                         <Link className="h-3 w-3 flex-shrink-0" /><span className="truncate">{page.url}</span>
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openSocialLinksForPage(page)}
+                        className="border-primary/40 text-primary hover:bg-primary/10 text-xs gap-1.5"
+                      >
+                        <Instagram className="h-3.5 w-3.5" />
+                        Gerar Links para Redes Sociais
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => copyScript(page)}
-                        className="border-border flex-1 sm:flex-initial active:scale-95 transition-transform"
+                        className="border-border text-xs active:scale-95 transition-transform"
                       >
-                        {copied === page.id ? <Check className="mr-2 h-4 w-4 text-primary" /> : <Copy className="mr-2 h-4 w-4" />}
+                        {copied === page.id ? <Check className="mr-1.5 h-3.5 w-3.5 text-primary" /> : <Copy className="mr-1.5 h-3.5 w-3.5" />}
                         {copied === page.id ? "Copiado!" : "Copiar Script"}
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeletePage(page)}
-                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-9 px-2.5 active:scale-95 transition-transform shrink-0"
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 px-2.5 active:scale-95 transition-transform shrink-0"
                         title="Remover Página"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -471,6 +539,150 @@ export default function Pages() {
           })}
         </div>
       )}
+
+      {/* MODAL: GERAR LINKS DA MESMA PÁGINA PARA AS DUAS CONTAS */}
+      <Dialog open={socialModalOpen} onOpenChange={setSocialModalOpen}>
+        <DialogContent className="glass-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <DialogTitle className="font-display text-lg">
+                Gerador de Links para Redes Sociais da Mesma Página
+              </DialogTitle>
+            </div>
+          </DialogHeader>
+
+          {selectedSocialPage && (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-primary/10 border border-primary/20 p-3 text-xs text-muted-foreground leading-relaxed">
+                <p className="font-semibold text-foreground mb-1">
+                  💡 Como usar a MESMA página nas duas contas sem conflito:
+                </p>
+                Você <strong>NÃO precisa duplicar a página nem criar duas páginas diferentes</strong>! O rastreador da NexusTrack instalado nesta página já detecta automaticamente qual link foi clicado, grava a conta e o local do visitante, e repassa essa informação para o checkout na hora da compra.
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold flex items-center gap-1.5">
+                    <Instagram className="h-3.5 w-3.5 text-purple-400" /> Nome da Conta 1
+                  </Label>
+                  <Input
+                    value={account1}
+                    onChange={(e) => setAccount1(e.target.value)}
+                    placeholder="conta1 (ex: perfil_principal)"
+                    className="bg-secondary text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold flex items-center gap-1.5">
+                    <Instagram className="h-3.5 w-3.5 text-pink-400" /> Nome da Conta 2
+                  </Label>
+                  <Input
+                    value={account2}
+                    onChange={(e) => setAccount2(e.target.value)}
+                    placeholder="conta2 (ex: perfil_reserva)"
+                    className="bg-secondary text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-2">
+                {/* Bloco Conta 1 */}
+                <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-sm text-purple-300 flex items-center gap-1.5">
+                      <Instagram className="h-4 w-4" /> @{account1.replace(/^@/, "")}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px]">Conta 1</Badge>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    {[
+                      { label: "Link na Bio", icon: Link, medium: "bio", camp: "bio_perfil" },
+                      { label: "Stories", icon: Camera, medium: "stories", camp: "stories" },
+                      { label: "Direct 1-a-1", icon: MessageCircle, medium: "direct", camp: "direct" },
+                      { label: "Reels", icon: Film, medium: "reels", camp: "reels" },
+                    ].map((item) => {
+                      const finalUrl = buildSocialUrl(selectedSocialPage.url, account1, item.medium, item.camp);
+                      const key = `c1_${item.medium}`;
+                      return (
+                        <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between bg-secondary/50 rounded-lg p-2 gap-2 border border-border/50">
+                          <div className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5 font-semibold text-foreground text-xs">
+                              <item.icon className="h-3.5 w-3.5 text-primary" /> {item.label}
+                            </span>
+                            <span className="font-mono text-[10px] text-muted-foreground break-all block mt-0.5">
+                              {finalUrl}
+                            </span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0 h-7 text-xs border-border"
+                            onClick={() => copySocialLink(finalUrl, key)}
+                          >
+                            {socialCopied === key ? (
+                              <Check className="h-3 w-3 mr-1 text-primary" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {socialCopied === key ? "Copiado!" : "Copiar Link"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Bloco Conta 2 */}
+                <div className="rounded-xl border border-pink-500/30 bg-pink-500/5 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-sm text-pink-300 flex items-center gap-1.5">
+                      <Instagram className="h-4 w-4" /> @{account2.replace(/^@/, "")}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px]">Conta 2</Badge>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    {[
+                      { label: "Link na Bio", icon: Link, medium: "bio", camp: "bio_perfil" },
+                      { label: "Stories", icon: Camera, medium: "stories", camp: "stories" },
+                      { label: "Direct 1-a-1", icon: MessageCircle, medium: "direct", camp: "direct" },
+                      { label: "Reels", icon: Film, medium: "reels", camp: "reels" },
+                    ].map((item) => {
+                      const finalUrl = buildSocialUrl(selectedSocialPage.url, account2, item.medium, item.camp);
+                      const key = `c2_${item.medium}`;
+                      return (
+                        <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between bg-secondary/50 rounded-lg p-2 gap-2 border border-border/50">
+                          <div className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5 font-semibold text-foreground text-xs">
+                              <item.icon className="h-3.5 w-3.5 text-primary" /> {item.label}
+                            </span>
+                            <span className="font-mono text-[10px] text-muted-foreground break-all block mt-0.5">
+                              {finalUrl}
+                            </span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0 h-7 text-xs border-border"
+                            onClick={() => copySocialLink(finalUrl, key)}
+                          >
+                            {socialCopied === key ? (
+                              <Check className="h-3 w-3 mr-1 text-primary" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {socialCopied === key ? "Copiado!" : "Copiar Link"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

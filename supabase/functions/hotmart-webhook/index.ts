@@ -159,6 +159,7 @@ Deno.serve(async (req) => {
     let campaignId: string | null = null;
     let userId: string | null = null;
     let leadId: string | null = null;
+    let matchedLead: any = null;
     let dashboardId: string | null = req.url.includes("dash=") ? new URL(req.url).searchParams.get("dash") : null;
 
     if (hottok) {
@@ -228,6 +229,7 @@ Deno.serve(async (req) => {
         if (score > bestScore) {
           bestScore = score;
           leadId = lead.id;
+          matchedLead = lead;
           if (lead.campaign_id && !campaignId) campaignId = lead.campaign_id;
         }
       }
@@ -298,11 +300,23 @@ Deno.serve(async (req) => {
     const saleAgeMs = Date.now() - new Date(saleDate).getTime();
     const isRecentSale = saleAgeMs >= 0 && saleAgeMs <= 24 * 60 * 60 * 1000;
     if ((status === "realized" || status === "approved") && userId && isRecentSale) {
+      let originDetail = "";
+      if (matchedLead?.utm_source) {
+        const src = String(matchedLead.utm_source).trim();
+        const med = String(matchedLead.utm_medium || "").trim();
+        originDetail = ` via @${src.replace(/^@/, "")}${med ? ` — ${med}` : ""}`;
+      } else if (payload.src || payload.sck) {
+        originDetail = ` via ${payload.src || payload.sck}`;
+      }
+
+      const notifTitle = "🎉 Venda Aprovada!";
+      const notifBody = `${buyerName || "Cliente"} comprou "${productName || "Produto"}" por ${amountMzn.toLocaleString("pt-MZ")} MT${originDetail}`;
+
       await supabase.from("notifications_log").insert({
         user_id: userId,
         sale_id: sale.id,
-        title: `ðŸ’° Nova venda!`,
-        body: `${buyerName || "AlguÃ©m"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
+        title: notifTitle,
+        body: notifBody,
       });
 
       try {
@@ -315,16 +329,17 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({
             user_id: userId,
-            title: "ðŸ’° Nova venda!",
-            body: `${buyerName || "AlguÃ©m"} pagou ${amountMzn.toLocaleString("pt-MZ")} MT em Hotmart`,
-              kind: "sale",
+            title: notifTitle,
+            body: notifBody,
+            kind: "sale",
           }),
         });
       } catch (pushErr) {
         console.error("Push notification error:", pushErr);
       }
+    }
 
-      // Send Meta CAPI Purchase event (pixel from profile, token from vault)
+    // Send Meta CAPI Purchase event (pixel from profile, token from vault)
       const { data: profile } = await supabase
         .from("profiles").select("meta_pixel_id").eq("user_id", userId).maybeSingle();
       const { data: tokenRow } = await supabase
